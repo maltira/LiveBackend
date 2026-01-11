@@ -46,6 +46,6 @@ func main() {
 	fmt.Println("[Swagger] Auth swagger was launched at http://localhost:8001/swagger/index.html#/")
 	err := r.Run(":" + config.AppConfig.PortAuth)
 	if err != nil {
-		panic(fmt.Sprintf("Не удалось запустить сервер: %s", err))
+		panic(fmt.Sprintf("Не удалось запустить AuthService: %s", err))
 	}
 }
