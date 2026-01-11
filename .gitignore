@@ -1,0 +1,8 @@
+.env
+
+docs/
+auth/docs/
+chat/docs/
+user/docs/
+gateway/docs/
+common/docs/
