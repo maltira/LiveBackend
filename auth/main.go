@@ -3,8 +3,8 @@
 // @description 	API для аутентификации пользователей в чат-платформе
 // @contact.name   	@enemybye
 
-// @host localhost:8001
-// @BasePath /api
+// @host 			localhost:8001
+// @BasePath 		/api
 package main
 
 import (
@@ -22,6 +22,7 @@ import (
 )
 
 func main() {
+	rdb := config.AuthRedisClient()
 	config.Load()
 	database.InitDB()
 
@@ -30,7 +31,9 @@ func main() {
 	authHandler := NewAuthHandler(authService)
 
 	r := gin.Default()
+	r.ForwardedByClientIP = true
 	api := r.Group("/api")
+	api.Use(middleware.RateLimiterMiddleware(rdb, "10-M", "limiter:auth:"))
 	{
 		api.POST("/auth/register", authHandler.Register)
 		api.POST("/auth/login", authHandler.Login)

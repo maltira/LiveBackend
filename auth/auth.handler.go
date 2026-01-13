@@ -1,8 +1,8 @@
 package main
 
 import (
-	"auth/models"
 	"auth/utils"
+	"common/dto"
 	"errors"
 	"net/http"
 	"time"
@@ -26,16 +26,16 @@ func NewAuthHandler(service *Service) *Handler {
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Param body body models.AuthRequest true "Данные для регистрации"
-// @Success 200  {object} models.AuthResponse "Временный токен для подтверждения OTP"
-// @Failure      400  {object} models.ErrorResponse "Некорректные входные данные"
-// @Failure      409  {object} models.ErrorResponse "Пользователь с таким email уже существует"
-// @Failure      500  {object} models.ErrorResponse "Внутренняя ошибка сервера"
+// @Param body body dto.AuthRequest true "Данные для регистрации"
+// @Success 200  {object} dto.AuthResponse "Временный токен для подтверждения OTP"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные входные данные"
+// @Failure      409  {object} dto.ErrorResponse "Пользователь с таким email уже существует"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/register [post]
 func (h *Handler) Register(c *gin.Context) {
-	var input models.AuthRequest
+	var input dto.AuthRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Code: 400, Error: "Incorrect data was transmitted in the body"})
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Incorrect data was transmitted in the body"})
 		return
 	}
 
@@ -43,9 +43,9 @@ func (h *Handler) Register(c *gin.Context) {
 	id, err := h.service.Register(input.Email, input.Password)
 	if err != nil {
 		if err.Error() == "email already exists" {
-			c.JSON(http.StatusConflict, models.ErrorResponse{Code: 409, Error: err.Error()})
+			c.JSON(http.StatusConflict, dto.ErrorResponse{Code: 409, Error: err.Error()})
 		} else {
-			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Code: 500, Error: err.Error()})
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		}
 		return
 	}
@@ -53,18 +53,18 @@ func (h *Handler) Register(c *gin.Context) {
 	// Отправляем OTP
 	_, _, err = h.service.SendOTP(id, input.Email)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Code: 500, Error: "failed to generate OTP"})
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "failed to generate OTP"})
 		return
 	}
 
 	// Генерируем временный токен
 	tempToken, err := utils.GenerateTempToken(id, 15*time.Minute)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Code: 500, Error: "failed to generate temp token"})
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "failed to generate temp token"})
 		return
 	}
 
-	c.JSON(http.StatusOK, models.AuthResponse{
+	c.JSON(http.StatusOK, dto.AuthResponse{
 		Action:    "register",
 		TempToken: tempToken,
 	})
@@ -76,40 +76,40 @@ func (h *Handler) Register(c *gin.Context) {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        body body models.AuthRequest true "Данные для входа"
-// @Success      200  {object} models.AuthResponse "Временный токен для ввода OTP"
-// @Failure      400  {object} models.ErrorResponse "Некорректные входные данные"
-// @Failure      401  {object} models.ErrorResponse "Неверный email или пароль"
-// @Failure      500  {object} models.ErrorResponse "Внутренняя ошибка сервера"
+// @Param        body body dto.AuthRequest true "Данные для входа"
+// @Success      200  {object} dto.AuthResponse "Временный токен для ввода OTP"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные входные данные"
+// @Failure      401  {object} dto.ErrorResponse "Неверный email или пароль"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/login [post]
 func (h *Handler) Login(c *gin.Context) {
-	var input models.AuthRequest
+	var input dto.AuthRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Code: 400, Error: "incorrect data was transmitted in the body"})
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "incorrect data was transmitted in the body"})
 		return
 	}
 
 	id, err := h.service.Login(input.Email, input.Password)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Code: 401, Error: "invalid username or password"})
+		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "invalid username or password"})
 		return
 	}
 
 	// Отправляем OTP
 	_, _, err = h.service.SendOTP(id, input.Email)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Code: 500, Error: "failed to generate OTP"})
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "failed to generate OTP"})
 		return
 	}
 
 	// Генерируем временный токен
 	tempToken, err := utils.GenerateTempToken(id, 15*time.Minute)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Code: 500, Error: "failed to generate temp token"})
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "failed to generate temp token"})
 		return
 	}
 
-	c.JSON(http.StatusOK, models.AuthResponse{
+	c.JSON(http.StatusOK, dto.AuthResponse{
 		Action:    "login",
 		TempToken: tempToken,
 	})
@@ -121,23 +121,23 @@ func (h *Handler) Login(c *gin.Context) {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        body body models.VerifyOTPRequest true "Данные для верификации"
-// @Success      200  {object} models.MessageResponse "Успешная аутентификация"
-// @Failure      400  {object} models.ErrorResponse "Некорректные данные"
-// @Failure      401  {object} models.ErrorResponse "Неверный/просроченный код или временный токен"
-// @Failure      500  {object} models.ErrorResponse "Внутренняя ошибка сервера"
+// @Param        body body dto.VerifyOTPRequest true "Данные для верификации"
+// @Success      200  {object}dto.MessageResponse "Успешная аутентификация"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
+// @Failure      401  {object} dto.ErrorResponse "Неверный/просроченный код или временный токен"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/verify [post]
 func (h *Handler) VerifyOTP(c *gin.Context) {
-	var input models.VerifyOTPRequest
+	var input dto.VerifyOTPRequest
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Code: 400, Error: "Incorrect data was transmitted in the body"})
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Incorrect data was transmitted in the body"})
 		return
 	}
 
 	// Проверяем временный токен
 	claims, err := utils.ValidateTempToken(input.TempToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Code: 401, Error: "Invalid or expired temp token"})
+		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "Invalid or expired temp token"})
 		return
 	}
 	userID := claims["id"].(string)
@@ -145,7 +145,7 @@ func (h *Handler) VerifyOTP(c *gin.Context) {
 
 	otp, err := h.service.repo.FindValidOTP(userUUID, input.Code)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Code: 401, Error: "invalid or expired OTP"})
+		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "invalid or expired OTP"})
 		return
 	}
 
@@ -156,13 +156,13 @@ func (h *Handler) VerifyOTP(c *gin.Context) {
 	if input.Action == "register" {
 		user, err := h.service.GetUserByID(userUUID)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, models.ErrorResponse{Code: 401, Error: "invalid user"})
+			c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "invalid user"})
 			return
 		}
 		user.IsVerified = true
 		err = h.service.UpdateUser(user)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Code: 500, Error: "account verification error, please try again to register"})
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "account verification error, please try again to register"})
 			return
 		}
 	}
@@ -171,7 +171,7 @@ func (h *Handler) VerifyOTP(c *gin.Context) {
 	c.SetCookie("access_token", access, 15*60, "/", "", false, true)
 	c.SetCookie("refresh_token", refresh, 30*24*60*60, "/", "", false, true)
 
-	c.JSON(http.StatusOK, models.MessageResponse{
+	c.JSON(http.StatusOK, dto.MessageResponse{
 		Message: "Authentication successful",
 	})
 }
@@ -181,28 +181,28 @@ func (h *Handler) VerifyOTP(c *gin.Context) {
 // @Description  Обновляет access-токен с помощью refresh-токена из cookie. Выдаёт новые токены в cookie.
 // @Tags         auth
 // @Produce      json
-// @Success      200  {object} models.MessageResponse "Токены успешно обновлены"
-// @Failure      401  {object} models.ErrorResponse "Отсутствует или недействителен refresh-токен"
-// @Failure      500  {object} models.ErrorResponse "Внутренняя ошибка"
+// @Success      200  {object}dto.MessageResponse "Токены успешно обновлены"
+// @Failure      401  {object} dto.ErrorResponse "Отсутствует или недействителен refresh-токен"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
 // @Router       /auth/refresh [post]
 func (h *Handler) Refresh(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
 
 	if err != nil || refreshToken == "" {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, models.ErrorResponse{Code: 401, Error: "missing refresh token"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "missing refresh token"})
 		return
 	}
 
 	access, refresh, err := h.service.Refresh(refreshToken)
 	if err != nil {
-		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Code: 401, Error: "invalid or expired refresh token"})
+		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "invalid or expired refresh token"})
 		return
 	}
 
 	c.SetCookie("access_token", access, 15*60, "/", "", false, true)
 	c.SetCookie("refresh_token", refresh, 30*24*60*60, "/", "", false, true)
 
-	c.JSON(http.StatusOK, models.MessageResponse{
+	c.JSON(http.StatusOK, dto.MessageResponse{
 		Message: "Refresh successful",
 	})
 }
@@ -212,28 +212,28 @@ func (h *Handler) Refresh(c *gin.Context) {
 // @Description  Завершает сессию пользователя, отзывает токены и очищает cookie.
 // @Tags         auth
 // @Produce      json
-// @Success      200  {object} models.MessageResponse "Успешный выход"
-// @Failure      401  {object} models.ErrorResponse "Неавторизован"
-// @Failure      500  {object} models.ErrorResponse "Внутренняя ошибка сервера"
+// @Success      200  {object}dto.MessageResponse "Успешный выход"
+// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/logout [post]
 func (h *Handler) Logout(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
 	refreshToken, err := c.Cookie("refresh_token")
 
 	if err != nil || refreshToken == "" {
-		c.AbortWithStatusJSON(http.StatusUnauthorized, models.ErrorResponse{Code: 401, Error: "Missing refresh token"})
+		c.AbortWithStatusJSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "Missing refresh token"})
 		return
 	}
 
 	if err := h.service.Logout(userID); err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Code: 500, Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
 
 	c.SetCookie("access_token", "", -1, "/", "", false, true)
 	c.SetCookie("refresh_token", "", -1, "/", "", false, true)
 
-	c.JSON(http.StatusOK, models.MessageResponse{Message: "Logged out successfully"})
+	c.JSON(http.StatusOK, dto.MessageResponse{Message: "Logged out successfully"})
 }
 
 // Me
@@ -242,9 +242,9 @@ func (h *Handler) Logout(c *gin.Context) {
 // @Tags         auth
 // @Produce      json
 // @Success      200  {object} models.User "Информация о пользователе"
-// @Failure      401  {object} models.ErrorResponse "Неавторизован"
-// @Failure      404  {object} models.ErrorResponse "Пользователь не найден"
-// @Failure      500  {object} models.ErrorResponse "Внутренняя ошибка сервера"
+// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
+// @Failure      404  {object} dto.ErrorResponse "Пользователь не найден"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/me [get]
 func (h *Handler) Me(c *gin.Context) {
 	userID, _ := c.MustGet("userID").(uuid.UUID)
@@ -254,7 +254,7 @@ func (h *Handler) Me(c *gin.Context) {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
 		} else {
-			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Code: 500, Error: err.Error()})
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		}
 		return
 	}

@@ -1,4 +1,4 @@
-package models
+package dto
 
 // * Requests
 
@@ -18,15 +18,4 @@ type VerifyOTPRequest struct {
 type AuthResponse struct {
 	Action    string `json:"action"`
 	TempToken string `json:"temp_token"`
-}
-
-type MessageResponse struct {
-	Message string `json:"message"`
-}
-
-// ! Ошибки
-
-type ErrorResponse struct {
-	Code  int    `json:"code"`
-	Error string `json:"error"`
 }
