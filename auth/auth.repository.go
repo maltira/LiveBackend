@@ -40,25 +40,27 @@ func (r *Repository) CreateUser(user *models.User) error {
 	return r.db.Create(user).Error
 }
 
-func (r *Repository) DeleteUser(id uuid.UUID) error {
-	return r.db.Delete(&models.User{}, "id = ?", id).Error
+func (r *Repository) DeleteUser(id uuid.UUID, isSoft bool) error {
+	if isSoft {
+		return r.db.Delete(&models.User{}, "id = ?", id).Error
+	}
+	return r.db.Unscoped().Delete(&models.User{}, "id = ?", id).Error
 }
 
 func (r *Repository) UpdateUser(user *models.User) error {
 	return r.db.Save(user).Error
 }
 
-func (r *Repository) Logout(userID uuid.UUID) error {
-	return r.db.Where("user_id = ?", userID).Delete(&models.RefreshToken{}).Error
-}
-
 // ! RefreshToken
 
-func (r *Repository) CreateRefreshToken(token string, userID uuid.UUID, expiresAt time.Time) error {
+func (r *Repository) CreateRefreshToken(token string, userID uuid.UUID, expiresAt time.Time, ip, userAgent, device string) error {
 	rt := models.RefreshToken{
 		Token:     token,
 		UserID:    userID,
 		ExpiresAt: expiresAt,
+		IP:        ip,
+		UserAgent: userAgent,
+		Device:    device,
 	}
 	return r.db.Create(&rt).Error
 }
@@ -71,13 +73,16 @@ func (r *Repository) FindValidByToken(token string) (*models.RefreshToken, error
 	if err != nil {
 		return nil, err
 	}
+
 	return &rt, nil
 }
 
 func (r *Repository) Revoke(token string) error {
-	return r.db.Model(&models.RefreshToken{}).
-		Where("token = ?", token).
-		Update("revoked", true).Error
+	return r.db.Where("token = ?", token).Delete(&models.RefreshToken{}).Error
+}
+
+func (r *Repository) RevokeAll(userID uuid.UUID) error {
+	return r.db.Where("user_id = ?", userID).Delete(&models.RefreshToken{}).Error
 }
 
 // ! OTP

@@ -8,14 +8,21 @@ type AuthRequest struct {
 }
 
 type VerifyOTPRequest struct {
-	Action    string `json:"action" binding:"required"`
 	TempToken string `json:"temp_token" binding:"required"`
 	Code      string `json:"code" binding:"required,len=6"`
+}
+
+type ResetPasswordRequest struct {
+	NewPassword string `json:"new_password" binding:"required,min=6"`
+	ResetToken  string `json:"reset_token" binding:"required"`
+}
+
+type TempTokenRequest struct {
+	TempToken string `json:"temp_token" binding:"required"`
 }
 
 // * Responses
 
 type AuthResponse struct {
-	Action    string `json:"action"`
 	TempToken string `json:"temp_token"`
 }

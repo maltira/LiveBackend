@@ -33,17 +33,31 @@ func main() {
 	r := gin.Default()
 	r.ForwardedByClientIP = true
 	api := r.Group("/api")
-	api.Use(middleware.RateLimiterMiddleware(rdb, "10-M", "limiter:auth:"))
-	{
-		api.POST("/auth/register", authHandler.Register)
-		api.POST("/auth/login", authHandler.Login)
-		api.POST("/auth/refresh", authHandler.Refresh)
-		api.POST("/auth/verify", authHandler.VerifyOTP)
 
-		// protected
-		api.GET("/auth/me", middleware.AuthMiddleware(), authHandler.Me)
-		api.POST("/auth/logout", middleware.AuthMiddleware(), authHandler.Logout)
+	sensitive := api.Group("")
+	sensitive.Use(middleware.RateLimiterMiddleware(rdb, "10-M", "limiter:auth:"))
+	{
+		sensitive.POST("/auth/register", authHandler.Register)
+		sensitive.POST("/auth/login", authHandler.Login)
+		sensitive.POST("/auth/verify", authHandler.VerifyOTP)
+		sensitive.POST("/auth/refresh", authHandler.Refresh)
 	}
+
+	resetGroup := api.Group("")
+	resetGroup.Use(middleware.RateLimiterMiddleware(rdb, "3-H", "limiter:auth:"))
+	{
+		resetGroup.POST("/auth/forgot-password", authHandler.ForgotPassword)
+		resetGroup.POST("/auth/reset-password", authHandler.ResetPassword)
+	}
+
+	protected := api.Group("")
+	protected.Use(middleware.AuthMiddleware())
+	{
+		protected.GET("/auth/me", authHandler.Me)
+		protected.POST("/auth/logout", authHandler.LogoutCurrent)
+		protected.POST("/auth/logout/all", authHandler.LogoutAll)
+	}
+
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	fmt.Println("[Swagger] Auth swagger was launched at http://localhost:8001/swagger/index.html#/")

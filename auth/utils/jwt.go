@@ -10,10 +10,11 @@ import (
 	"github.com/google/uuid"
 )
 
-func GenerateTempToken(userID uuid.UUID, duration time.Duration) (string, error) {
+func GenerateTempToken(userID uuid.UUID, duration time.Duration, action string) (string, error) {
 	claims := jwt.MapClaims{
-		"id":  userID.String(),
-		"exp": time.Now().Add(duration).Unix(),
+		"id":     userID.String(),
+		"action": action,
+		"exp":    time.Now().Add(duration).Unix(),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString(config.AppConfig.JWTSecret)
@@ -38,4 +39,13 @@ func ValidateTempToken(tokenString string) (jwt.MapClaims, error) {
 		return claims, nil
 	}
 	return nil, errors.New("invalid token")
+}
+
+func ParseToken(tokenString string) (*jwt.Token, error) {
+	if tokenString == "" {
+		return nil, errors.New("token is empty")
+	}
+	return jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
+		return config.AppConfig.JWTSecret, nil
+	})
 }

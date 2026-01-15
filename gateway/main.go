@@ -12,6 +12,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// TODO:
+// 1. Отзыв токенов после восстановления пароля и при выходе с акка не закрывать все сессии
+// 2. Изменение пароля
+// 3. Удаление аккаунта
+// 4. Список активных сессий
+// 5. 2FA (TOTP || Google Authenticator)
+
 func main() {
 	config.Load()
 	r := gin.Default()
