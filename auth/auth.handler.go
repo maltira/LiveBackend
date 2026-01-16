@@ -478,11 +478,12 @@ func (h *Handler) ListSessions(c *gin.Context) {
 // ! Удаление аккаунта
 
 // Delete
-// @Summary      Удалить аккаунт
-// @Description  Удаляет текущего пользователя
+// @Summary      Запрос на удаление аккаунта
+// @Description  Повторный ввод пароля, генерация токена удаления
 // @Tags         user
 // @Produce      json
-// @Success      200  {object} dto.MessageResponse "Пользователь удалён"
+// @Success      200  {object} dto.TempTokenResponse "Токен для удаления"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      401  {object} dto.ErrorResponse "Неавторизован"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/delete [post]
@@ -512,6 +513,16 @@ func (h *Handler) Delete(c *gin.Context) {
 	})
 }
 
+// DeleteConfirm
+// @Summary      Подтверждение удаления аккаунта
+// @Description  Отложенно удаляет аккаунт на 3 дня
+// @Tags         user
+// @Produce      json
+// @Success      200  {object} dto.TempTokenResponse "Успешный запрос"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
+// @Failure      401  {object} dto.ErrorResponse "Некорректный токен"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
+// @Router       /auth/delete/confirm [post]
 func (h *Handler) DeleteConfirm(c *gin.Context) {
 	deleteToken := c.DefaultQuery("token", "")
 	if deleteToken == "" {
@@ -545,10 +556,20 @@ func (h *Handler) DeleteConfirm(c *gin.Context) {
 	c.SetCookie("refresh_token", "", -1, "/", "", false, true)
 
 	c.JSON(http.StatusOK, dto.MessageResponse{
-		Message: "Аккаунт будет удалён через 7 дней. Вы можете восстановить доступ в любое время до истечения этого срока.",
+		Message: "Аккаунт будет удалён через 3 дня. Вы можете восстановить доступ в любое время до истечения этого срока.",
 	})
 }
 
+// DeleteCancel
+// @Summary      Восстановление аккаунта (после удаления)
+// @Description  Восстанавливает удаленный аккаунт
+// @Tags         user
+// @Produce      json
+// @Success      200  {object} dto.TempTokenResponse "Аккаунт восстановлен"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
+// @Failure      401  {object} dto.ErrorResponse "Некорректный токен"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
+// @Router       /auth/delete/cancel [post]
 func (h *Handler) DeleteCancel(c *gin.Context) {
 	recoveryToken := c.DefaultQuery("token", "")
 	if recoveryToken == "" {
@@ -566,7 +587,7 @@ func (h *Handler) DeleteCancel(c *gin.Context) {
 
 	err = h.service.repo.CancelDeletion(userUUID)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
 
