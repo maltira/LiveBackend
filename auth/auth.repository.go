@@ -47,6 +47,24 @@ func (r *Repository) DeleteUser(id uuid.UUID, isSoft bool) error {
 	return r.db.Unscoped().Delete(&models.User{}, "id = ?", id).Error
 }
 
+func (r *Repository) ScheduleDeletion(userID uuid.UUID, deletionTime time.Time) error {
+	user, err := r.FindByID(userID)
+	if err != nil {
+		return err
+	}
+	user.ToBeDeletedAt = &deletionTime
+	return r.db.Save(user).Error
+}
+
+func (r *Repository) CancelDeletion(userID uuid.UUID) error {
+	user, err := r.FindByID(userID)
+	if err != nil {
+		return err
+	}
+	user.ToBeDeletedAt = nil
+	return r.db.Save(user).Error
+}
+
 func (r *Repository) UpdateUser(user *models.User) error {
 	return r.db.Save(user).Error
 }

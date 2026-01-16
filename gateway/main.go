@@ -14,9 +14,7 @@ import (
 
 // TODO:
 // 1. Изменение пароля
-// 2. Удаление аккаунта
-// 3. Список активных сессий
-// 4. 2FA (TOTP || Google Authenticator)
+// 2. 2FA (TOTP || Google Authenticator)
 
 func main() {
 	config.Load()

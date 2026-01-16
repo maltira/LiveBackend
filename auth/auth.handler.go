@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -164,12 +165,24 @@ func (h *Handler) VerifyOTP(c *gin.Context) {
 	device := utils.ParseDeviceInfo(userAgent)
 
 	if action == "login" {
+		if user.ToBeDeletedAt != nil {
+			recoveryToken, err := utils.GenerateTempToken(user.ID, 15*time.Minute, "recovery_token")
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "failed to generate recovery token"})
+				return
+			}
+			c.JSON(http.StatusOK, dto.RecoveryResponse{
+				Message:       "Восстановление аккаунта",
+				RecoveryToken: recoveryToken,
+			})
+			return
+		}
 		access, refresh, _ := h.service.GenerateTokens(userUUID, ip, userAgent, device)
 		c.SetCookie("access_token", access, 15*60, "/", "", false, true)
 		c.SetCookie("refresh_token", refresh, 30*24*60*60, "/", "", false, true)
 
 		c.JSON(http.StatusOK, dto.MessageResponse{
-			Message: "Login successful",
+			Message: "Успешный вход",
 		})
 		return
 	} else if action == "register" {
@@ -185,7 +198,7 @@ func (h *Handler) VerifyOTP(c *gin.Context) {
 		c.SetCookie("refresh_token", refresh, 30*24*60*60, "/", "", false, true)
 
 		c.JSON(http.StatusOK, dto.MessageResponse{
-			Message: "Registration successful",
+			Message: "Успешная регистрация",
 		})
 		return
 	} else if action == "forgot_password" {
@@ -319,14 +332,18 @@ func (h *Handler) ForgotPassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Incorrect data was transmitted in the param"})
 		return
 	}
-	user, err := h.service.repo.FindByEmail(email)
 
+	user, err := h.service.repo.FindByEmail(email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusOK, dto.ErrorResponse{Code: 401, Error: "OTP code was sent"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		return
+	}
+	if user.ToBeDeletedAt != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Аккаунт находится на стадии удаления, невозможно изменить пароль"})
 		return
 	}
 
@@ -429,7 +446,7 @@ func (h *Handler) Me(c *gin.Context) {
 // ListSessions
 // @Summary      Получить список активных сессий
 // @Description  Возвращает список всех устройств/браузеров, с которых пользователь сейчас залогинен (активные refresh-токены)
-// @Tags         auth
+// @Tags         user
 // @Produce      json
 // @Success      200  {array} dto.SessionResponse "Список сессий"
 // @Failure      401  {object} dto.ErrorResponse "Неавторизован"
@@ -456,4 +473,102 @@ func (h *Handler) ListSessions(c *gin.Context) {
 		})
 	}
 	c.JSON(http.StatusOK, response)
+}
+
+// ! Удаление аккаунта
+
+// Delete
+// @Summary      Удалить аккаунт
+// @Description  Удаляет текущего пользователя
+// @Tags         user
+// @Produce      json
+// @Success      200  {object} dto.MessageResponse "Пользователь удалён"
+// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
+// @Router       /auth/delete [post]
+func (h *Handler) Delete(c *gin.Context) {
+	userID := c.MustGet("userID").(uuid.UUID)
+	var req dto.DeleteAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "В теле запроса переданы некорректные данные"})
+		return
+	}
+
+	// Подтверждение пароля
+	user, err := h.service.repo.FindByID(userID)
+	if err != nil || bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) != nil {
+		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "Invalid password"})
+		return
+	}
+
+	// Генерируем temp-токен для подтверждения удаления
+	deleteToken, err := utils.GenerateTempToken(user.ID, 15*time.Minute, "delete_token")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "failed to generate delete token"})
+		return
+	}
+	c.JSON(http.StatusOK, dto.TempTokenResponse{
+		TempToken: deleteToken,
+	})
+}
+
+func (h *Handler) DeleteConfirm(c *gin.Context) {
+	deleteToken := c.DefaultQuery("token", "")
+	if deleteToken == "" {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Invalid token"})
+		return
+	}
+	// Проверяем временный токен
+	claims, err := utils.ValidateTempToken(deleteToken)
+	if err != nil || claims["action"] != "delete_token" {
+		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "Invalid or expired delete token"})
+		return
+	}
+
+	userID := claims["id"].(string)
+	userUUID := uuid.MustParse(userID)
+
+	deletionTime := time.Now().Add(3 * 24 * time.Hour)
+	err = h.service.repo.ScheduleDeletion(userUUID, deletionTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Failed to schedule deletion"})
+		return
+	}
+
+	// Выходим со всех устройств
+	_ = h.service.RevokeAllRefreshTokens(userUUID)
+	accessToken, _ := c.Cookie("access_token")
+	if accessToken != "" {
+		_ = h.service.BlacklistAccessToken(c, accessToken)
+	}
+	c.SetCookie("access_token", "", -1, "/", "", false, true)
+	c.SetCookie("refresh_token", "", -1, "/", "", false, true)
+
+	c.JSON(http.StatusOK, dto.MessageResponse{
+		Message: "Аккаунт будет удалён через 7 дней. Вы можете восстановить доступ в любое время до истечения этого срока.",
+	})
+}
+
+func (h *Handler) DeleteCancel(c *gin.Context) {
+	recoveryToken := c.DefaultQuery("token", "")
+	if recoveryToken == "" {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Invalid token"})
+		return
+	}
+	// Проверяем временный токен
+	claims, err := utils.ValidateTempToken(recoveryToken)
+	if err != nil || claims["action"] != "recovery_token" {
+		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "Invalid or expired recovery token"})
+		return
+	}
+	userID := claims["id"].(string)
+	userUUID := uuid.MustParse(userID)
+
+	err = h.service.repo.CancelDeletion(userUUID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.MessageResponse{Message: "Аккаунт успешно восстановлен"})
 }

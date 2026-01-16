@@ -41,6 +41,7 @@ func main() {
 		sensitive.POST("/auth/login", authHandler.Login)
 		sensitive.POST("/auth/verify", authHandler.VerifyOTP)
 		sensitive.POST("/auth/refresh", authHandler.Refresh)
+
 	}
 
 	resetGroup := api.Group("")
@@ -48,6 +49,7 @@ func main() {
 	{
 		resetGroup.POST("/auth/forgot-password", authHandler.ForgotPassword)
 		resetGroup.POST("/auth/reset-password", authHandler.ResetPassword)
+		resetGroup.POST("/auth/delete/cancel", authHandler.DeleteCancel)
 	}
 
 	protected := api.Group("")
@@ -55,6 +57,10 @@ func main() {
 	{
 		protected.GET("/auth/me", authHandler.Me)
 		protected.GET("/auth/sessions", authHandler.ListSessions)
+
+		protected.POST("/auth/delete", authHandler.Delete)
+		protected.POST("/auth/delete/confirm", authHandler.DeleteConfirm)
+
 		protected.POST("/auth/logout", authHandler.LogoutCurrent)
 		protected.POST("/auth/logout/all", authHandler.LogoutAll)
 	}

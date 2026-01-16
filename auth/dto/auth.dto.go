@@ -21,8 +21,17 @@ type TempTokenRequest struct {
 	TempToken string `json:"temp_token" binding:"required"`
 }
 
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required,min=6"`
+}
+
 // * Responses
 
 type AuthResponse struct {
 	TempToken string `json:"temp_token"`
+}
+
+type RecoveryResponse struct {
+	Message       string `json:"message"`
+	RecoveryToken string `json:"recovery_token"`
 }
