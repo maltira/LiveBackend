@@ -89,12 +89,13 @@ func (s *Service) UpdatePassword(userID uuid.UUID, newPassword string) error {
 // ! Token
 
 func (s *Service) GenerateTokens(userID uuid.UUID, ip, userAgent, device string) (string, string, error) {
+	now := time.Now()
 	// Access token
 	access := jwt.NewWithClaims(
 		jwt.SigningMethodHS256,
 		jwt.MapClaims{
 			"id":  userID,
-			"exp": time.Now().Add(config.AppConfig.AccessTokenDuration).Unix(),
+			"exp": now.Add(config.AppConfig.AccessTokenDuration).Unix(),
 			"jti": uuid.New().String(), // id токена
 		},
 	)
@@ -105,7 +106,7 @@ func (s *Service) GenerateTokens(userID uuid.UUID, ip, userAgent, device string)
 
 	// Refresh token
 	refreshToken := uuid.New().String()
-	expiresAt := time.Now().Add(config.AppConfig.RefreshTokenDuration)
+	expiresAt := now.Add(config.AppConfig.RefreshTokenDuration)
 
 	if err := s.repo.CreateRefreshToken(refreshToken, userID, expiresAt, ip, userAgent, device); err != nil {
 		return "", "", err
@@ -153,6 +154,10 @@ func (s *Service) RevokeRefreshToken(refreshToken string) error {
 
 func (s *Service) RevokeAllRefreshTokens(userID uuid.UUID) error {
 	return s.repo.RevokeAll(userID)
+}
+
+func (s *Service) ListActiveSessions(userID uuid.UUID) ([]models.RefreshToken, error) {
+	return s.repo.ListActiveSessions(userID)
 }
 
 // ! OTP

@@ -3,6 +3,7 @@ package main
 import (
 	"auth/dto"
 	"auth/utils"
+	"common/config"
 	"errors"
 	"fmt"
 	"net/http"
@@ -396,7 +397,7 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.MessageResponse{Message: "Password reset successful"})
 }
 
-// ! Информация о пользователе
+// ! Информация для пользователя
 
 // Me
 // @Summary      Получить информацию о текущем пользователе
@@ -423,4 +424,36 @@ func (h *Handler) Me(c *gin.Context) {
 	}
 	fmt.Println(userID, user, err)
 	c.JSON(http.StatusOK, user)
+}
+
+// ListSessions
+// @Summary      Получить список активных сессий
+// @Description  Возвращает список всех устройств/браузеров, с которых пользователь сейчас залогинен (активные refresh-токены)
+// @Tags         auth
+// @Produce      json
+// @Success      200  {array} dto.SessionResponse "Список сессий"
+// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
+// @Router       /auth/sessions [get]
+func (h *Handler) ListSessions(c *gin.Context) {
+	userID := c.MustGet("userID").(uuid.UUID)
+
+	sessions, err := h.service.ListActiveSessions(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		return
+	}
+
+	var response []dto.SessionResponse
+	for _, s := range sessions {
+		response = append(response, dto.SessionResponse{
+			ID:        s.ID,
+			Device:    s.Device,
+			IP:        s.IP,
+			UserAgent: s.UserAgent,
+			CreatedAt: s.ExpiresAt.Add(-config.AppConfig.RefreshTokenDuration),
+			ExpiresAt: s.ExpiresAt,
+		})
+	}
+	c.JSON(http.StatusOK, response)
 }

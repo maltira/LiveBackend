@@ -85,6 +85,18 @@ func (r *Repository) RevokeAll(userID uuid.UUID) error {
 	return r.db.Where("user_id = ?", userID).Delete(&models.RefreshToken{}).Error
 }
 
+func (r *Repository) ListActiveSessions(userID uuid.UUID) ([]models.RefreshToken, error) {
+	var sessions []models.RefreshToken
+	err := r.db.
+		Where("user_id = ? AND expires_at > ?", userID, time.Now()).
+		Order("expires_at desc").
+		Find(&sessions).Error
+	if err != nil {
+		return nil, err
+	}
+	return sessions, nil
+}
+
 // ! OTP
 
 func (r *Repository) CreateOTP(otp *models.OTPCode) error {

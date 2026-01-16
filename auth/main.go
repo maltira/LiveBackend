@@ -44,7 +44,7 @@ func main() {
 	}
 
 	resetGroup := api.Group("")
-	resetGroup.Use(middleware.RateLimiterMiddleware(rdb, "3-H", "limiter:auth:"))
+	resetGroup.Use(middleware.RateLimiterMiddleware(rdb, "3-H", "limiter:reset:"))
 	{
 		resetGroup.POST("/auth/forgot-password", authHandler.ForgotPassword)
 		resetGroup.POST("/auth/reset-password", authHandler.ResetPassword)
@@ -54,6 +54,7 @@ func main() {
 	protected.Use(middleware.AuthMiddleware())
 	{
 		protected.GET("/auth/me", authHandler.Me)
+		protected.GET("/auth/sessions", authHandler.ListSessions)
 		protected.POST("/auth/logout", authHandler.LogoutCurrent)
 		protected.POST("/auth/logout/all", authHandler.LogoutAll)
 	}
