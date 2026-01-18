@@ -8,10 +8,20 @@
 package main
 
 import (
-	"auth/database"
+	authdb "auth/database"
 	"common/config"
 	"common/middleware"
+	"common/rabbitmq"
+	"common/redis"
+	"context"
+	"errors"
 	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -22,11 +32,11 @@ import (
 )
 
 func main() {
-	rdb := config.AuthRedisClient()
+	rdb := redis.AuthRedisClient()
 	config.Load()
-	database.InitDB()
+	authdb.InitDB()
 
-	authRepo := NewAuthRepository(database.GetDB())
+	authRepo := NewAuthRepository(authdb.GetDB())
 	authService := NewAuthService(authRepo)
 	authHandler := NewAuthHandler(authService)
 
@@ -67,9 +77,33 @@ func main() {
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	fmt.Println("[Swagger] Auth swagger was launched at http://localhost:8001/swagger/index.html#/")
-	err := r.Run(":" + config.AppConfig.PortAuth)
-	if err != nil {
-		panic(fmt.Sprintf("Не удалось запустить AuthService: %s", err))
+	srv := &http.Server{
+		Addr:    ":" + config.AppConfig.PortAuth,
+		Handler: r,
 	}
+
+	fmt.Println("[Swagger] Auth swagger was launched at http://localhost:8001/swagger/index.html#/")
+	go func() {
+		log.Printf("Auth service starting on %s", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			panic(err)
+		}
+	}()
+
+	// Блокируем main, ждём сигнал завершения
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	fmt.Println("\n[Shutting down]")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("HTTP server shutdown error: %v", err)
+	}
+	rabbitmq.Close()
+	authdb.CloseDB()
+	redis.Close()
 }

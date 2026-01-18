@@ -24,7 +24,9 @@ func main() {
 	api.Use(middleware.CORSMiddleware())
 
 	authGroup := api.Group("/auth")
+	userGroup := api.Group("/user")
 	proxyToBackend("http://localhost:"+config.AppConfig.PortAuth, authGroup)
+	proxyToBackend("http://localhost:"+config.AppConfig.PortUser, userGroup)
 
 	err := r.Run(":" + config.AppConfig.PortGateway)
 	if err != nil {

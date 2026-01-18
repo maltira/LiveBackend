@@ -1,7 +1,9 @@
-package config
+package redis
 
 import (
 	"context"
+	"fmt"
+	"log"
 	"strconv"
 	"sync"
 	"time"
@@ -39,4 +41,15 @@ func initClients() {
 func AuthRedisClient() *redis.Client {
 	initClients()
 	return authRedis
+}
+
+func Close() {
+	if authRedis != nil {
+		if err := authRedis.Close(); err != nil {
+			log.Printf("Ошибка закрытия Redis (auth): %v", err)
+		}
+		authRedis = nil
+	}
+	// userRedis.Close()
+	fmt.Println("redis connection closed")
 }

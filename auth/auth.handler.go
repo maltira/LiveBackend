@@ -4,6 +4,8 @@ import (
 	"auth/dto"
 	"auth/utils"
 	"common/config"
+	"common/rabbitmq"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -196,6 +198,17 @@ func (h *Handler) VerifyOTP(c *gin.Context) {
 		access, refresh, _ := h.service.GenerateTokens(userUUID, ip, userAgent, device)
 		c.SetCookie("access_token", access, 15*60, "/", "", false, true)
 		c.SetCookie("refresh_token", refresh, 30*24*60*60, "/", "", false, true)
+
+		// сообщаем, что пользователь создан
+		payload := map[string]interface{}{
+			"user_id": user.ID,
+			"action":  "user_created",
+		}
+		payloadBytes, _ := json.Marshal(payload)
+		err = rabbitmq.Publish("user.events", payloadBytes)
+		if err != nil {
+			fmt.Printf("Failed to publish user_verified event: %v", err)
+		}
 
 		c.JSON(http.StatusOK, dto.MessageResponse{
 			Message: "Успешная регистрация",

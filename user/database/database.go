@@ -1,10 +1,10 @@
 package database
 
 import (
-	"auth/models"
 	"common/config"
 	"fmt"
 	"log"
+	"user/models"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -19,7 +19,7 @@ func InitDB() {
 		cfg.DBHost,
 		cfg.DBUser,
 		cfg.DBPassword,
-		cfg.DBAuthName,
+		cfg.DBUserName,
 		cfg.DBPort,
 		cfg.DBSSLMode,
 	)
@@ -31,7 +31,7 @@ func InitDB() {
 	}
 
 	// Автомиграция таблиц
-	err = db.AutoMigrate(&models.User{}, &models.RefreshToken{}, &models.OTPCode{})
+	err = db.AutoMigrate(&models.Profile{})
 	if err != nil {
 		panic("failed to migrate database: " + err.Error())
 	}

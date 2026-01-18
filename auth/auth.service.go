@@ -4,6 +4,7 @@ import (
 	"auth/models"
 	"auth/utils"
 	"common/config"
+	"common/redis"
 	"errors"
 	"fmt"
 	"time"
@@ -142,7 +143,7 @@ func (s *Service) BlacklistAccessToken(c *gin.Context, accessToken string) error
 	remaining := time.Until(exp)
 	if remaining > 0 {
 		key := "blacklist:access:" + jti
-		config.AuthRedisClient().Set(c.Request.Context(), key, "revoked", remaining)
+		redis.AuthRedisClient().Set(c.Request.Context(), key, "revoked", remaining)
 	}
 
 	return nil
