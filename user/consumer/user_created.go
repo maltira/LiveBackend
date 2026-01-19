@@ -13,7 +13,7 @@ import (
 )
 
 func StartUserEventsConsumer(db *gorm.DB) {
-	repo := repository.NewUserRepository(db)
+	repo := repository.NewProfileRepository(db)
 
 	err := rabbitmq.Consume("user.events", func(body []byte) {
 		var event struct {
@@ -29,9 +29,11 @@ func StartUserEventsConsumer(db *gorm.DB) {
 		}
 		userID := uuid.MustParse(event.UserID)
 
+		name := "user_" + event.UserID[:8]
 		profile := models.Profile{
 			ID:       userID,
-			Username: "user_" + event.UserID[:8],
+			Username: name,
+			FullName: name,
 		}
 
 		_, err := repo.FindByID(userID)

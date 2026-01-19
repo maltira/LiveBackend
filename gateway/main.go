@@ -16,6 +16,10 @@ import (
 // 1. Изменение пароля
 // 2. 2FA (TOTP || Google Authenticator)
 
+// blacklist:access:[jti] - токен в черном списке
+// limiter:reset:[ip] - rate-limit сброса пароля
+// limiter:auth:[ip] - rate-limit авторизации и регистрации
+
 func main() {
 	config.Load()
 	r := gin.Default()

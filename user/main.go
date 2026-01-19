@@ -28,9 +28,10 @@ func main() {
 	userdb.InitDB()
 
 	r := gin.Default()
-	r.ForwardedByClientIP = true
-	api := r.Group("/api")
-	initUserRoutes(api)
+	api := r.Group("/api/user")
+
+	initProfileRoutes(api)
+	initBlockRoutes(api)
 
 	srv := &http.Server{
 		Addr:    ":" + config.AppConfig.PortUser,
@@ -64,13 +65,32 @@ func main() {
 	userdb.CloseDB()
 }
 
-func initUserRoutes(api *gin.RouterGroup) {
-	repo := repository.NewUserRepository(userdb.GetDB())
-	sc := service.NewUserService(repo)
-	h := handler.NewUserHandler(sc)
+func initProfileRoutes(api *gin.RouterGroup) {
+	repo := repository.NewProfileRepository(userdb.GetDB())
+	sc := service.NewProfileService(repo)
+	h := handler.NewProfileHandler(sc)
 
-	userGroup := api.Group("/user")
+	userGroup := api.Group("/profile").Use(middleware.AuthMiddleware())
 	{
-		userGroup.GET("/:id", middleware.ValidateUUID(), h.FindUser)
+		userGroup.GET("/all", h.FindAll)
+		userGroup.GET("", h.GetProfile)
+		userGroup.PUT("", h.UpdateProfile)
+		userGroup.GET("/:id", middleware.ValidateUUID(), h.FindProfile)
+
+		userGroup.GET("/username/:username/check", h.IsUsernameFree)
+	}
+}
+
+func initBlockRoutes(api *gin.RouterGroup) {
+	repo := repository.NewBlockRepository(userdb.GetDB())
+	sc := service.NewBlockService(repo)
+	h := handler.NewBlockHandler(sc)
+
+	blockGroup := api.Group("/block").Use(middleware.AuthMiddleware())
+	{
+		blockGroup.GET("/all", h.GetAllBlocks)                              // Список заблокированных пользователей
+		blockGroup.POST("/:id", middleware.ValidateUUID(), h.BlockUser)     // Заблокировать пользователя
+		blockGroup.DELETE("/:id", middleware.ValidateUUID(), h.UnblockUser) // Разблокировать
+		blockGroup.GET("/check", h.IsUserBlocked)                           // Является ли заблокированным
 	}
 }

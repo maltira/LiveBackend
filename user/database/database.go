@@ -31,7 +31,7 @@ func InitDB() {
 	}
 
 	// Автомиграция таблиц
-	err = db.AutoMigrate(&models.Profile{})
+	err = db.AutoMigrate(&models.Profile{}, &models.Block{})
 	if err != nil {
 		panic("failed to migrate database: " + err.Error())
 	}
