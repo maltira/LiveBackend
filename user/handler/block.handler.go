@@ -17,6 +17,15 @@ func NewBlockHandler(sc service.BlockService) *BlockHandler {
 	return &BlockHandler{sc: sc}
 }
 
+// GetAllBlocks
+// @Summary      Получить список заблокированных пользователей
+// @Description  Возвращает всех пользователей, которых текущий пользователь заблокировал
+// @Tags         block
+// @Produce      json
+// @Success      200  {array} models.Block "Список заблокированных"
+// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
+// @Router       /user/block/all [get]
 func (h *BlockHandler) GetAllBlocks(c *gin.Context) {
 	id := c.MustGet("userID").(uuid.UUID)
 	blocks, err := h.sc.GetAllBlocks(id)
@@ -28,6 +37,18 @@ func (h *BlockHandler) GetAllBlocks(c *gin.Context) {
 	c.JSON(http.StatusOK, blocks)
 }
 
+// IsUserBlocked
+// @Summary      Проверка, заблокирован ли пользователь
+// @Description  Проверяет, находится ли указанный пользователь в чёрном списке
+// @Tags         block
+// @Accept       json
+// @Produce      json
+// @Param        body body dto.BlockRequest true "ID проверяемого пользователя"
+// @Success      200  {object} bool "true — заблокирован, false — нет"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
+// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
+// @Router       /user/block/check [get]
 func (h *BlockHandler) IsUserBlocked(c *gin.Context) {
 	var req dto.BlockRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -44,6 +65,17 @@ func (h *BlockHandler) IsUserBlocked(c *gin.Context) {
 	c.JSON(http.StatusOK, isBlocked)
 }
 
+// BlockUser
+// @Summary      Заблокировать пользователя
+// @Description  Добавляет пользователя в чёрный список текущего пользователя
+// @Tags         block
+// @Produce      json
+// @Param        id path string true "ID пользователя для блокировки" Format(uuid)
+// @Success      200  {object} dto.MessageResponse "Пользователь заблокирован"
+// @Failure      400  {object} dto.ErrorResponse "Некорректный ID"
+// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
+// @Router       /user/block/{id} [post]
 func (h *BlockHandler) BlockUser(c *gin.Context) {
 	id := c.MustGet("userID").(uuid.UUID)
 	blockID := c.Param("id")
@@ -57,6 +89,17 @@ func (h *BlockHandler) BlockUser(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.MessageResponse{Message: "Пользователь добавлен в черный список"})
 }
 
+// UnblockUser
+// @Summary      Разблокировать пользователя
+// @Description  Удаляет пользователя из чёрного списка
+// @Tags         block
+// @Produce      json
+// @Param        id path string true "ID пользователя для разблокировки" Format(uuid)
+// @Success      200  {object} dto.MessageResponse "Пользователь разблокирован"
+// @Failure      400  {object} dto.ErrorResponse "Некорректный ID"
+// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
+// @Router       /user/block/{id} [delete]
 func (h *BlockHandler) UnblockUser(c *gin.Context) {
 	id := c.MustGet("userID").(uuid.UUID)
 	blockedID := c.Param("id")

@@ -1,6 +1,7 @@
 package rabbitmq
 
 import (
+	"common/config"
 	"context"
 	"fmt"
 	"log"
@@ -17,7 +18,7 @@ var (
 
 func Init() {
 	once.Do(func() {
-		addr := "amqp://guest:guest@localhost:5672/"
+		addr := config.AppConfig.RabbitMQAddr
 
 		var err error
 		conn, err = amqp.Dial(addr)

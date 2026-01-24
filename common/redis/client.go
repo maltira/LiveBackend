@@ -1,6 +1,7 @@
 package redis
 
 import (
+	"common/config"
 	"context"
 	"fmt"
 	"log"
@@ -20,7 +21,7 @@ func initClients() {
 	once.Do(func() {
 		newClient := func(db int) *redis.Client {
 			c := redis.NewClient(&redis.Options{
-				Addr:     "localhost:6379",
+				Addr:     config.AppConfig.RedisAddr,
 				Password: "",
 				DB:       db,
 			})

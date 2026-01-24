@@ -28,6 +28,9 @@ type Config struct {
 	PortUser    string
 	PortChat    string
 	PortGateway string
+
+	RabbitMQAddr string
+	RedisAddr    string
 }
 
 var AppConfig *Config
@@ -57,6 +60,9 @@ func Load() {
 		PortUser:    os.Getenv("PORT_USER"),
 		PortChat:    os.Getenv("PORT_CHAT"),
 		PortGateway: os.Getenv("PORT_GATEWAY"),
+
+		RabbitMQAddr: os.Getenv("RABBITMQ_ADDR"),
+		RedisAddr:    os.Getenv("REDIS_ADDR"),
 	}
 }
 

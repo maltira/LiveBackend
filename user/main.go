@@ -1,3 +1,10 @@
+// @title 			User Service API
+// @version         1.0
+// @description 	API для управления профилем пользователя
+// @contact.name   	@enemybye
+
+// @host 			localhost:8002
+// @BasePath 		/api
 package main
 
 import (
@@ -20,7 +27,11 @@ import (
 
 	userdb "user/database"
 
+	_ "user/docs"
+
 	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func main() {
@@ -33,11 +44,15 @@ func main() {
 	initProfileRoutes(api)
 	initBlockRoutes(api)
 
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+	// ? Запуск процессов и сервера
 	srv := &http.Server{
 		Addr:    ":" + config.AppConfig.PortUser,
 		Handler: r,
 	}
 
+	fmt.Println("[Swagger] User swagger was launched at http://localhost:8002/swagger/index.html#/")
 	go func() {
 		log.Printf("User service starting on %s", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -47,6 +62,8 @@ func main() {
 
 	// Получаем события в фоне
 	go consumer.StartUserEventsConsumer(userdb.GetDB())
+
+	// ? Завершение
 
 	// Блокируем main, ждём сигнал завершения
 	quit := make(chan os.Signal, 1)
