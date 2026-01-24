@@ -43,6 +43,7 @@ func main() {
 
 	initProfileRoutes(api)
 	initBlockRoutes(api)
+	initSettingsRoutes(api)
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
@@ -109,5 +110,17 @@ func initBlockRoutes(api *gin.RouterGroup) {
 		blockGroup.POST("/:id", middleware.ValidateUUID(), h.BlockUser)     // Заблокировать пользователя
 		blockGroup.DELETE("/:id", middleware.ValidateUUID(), h.UnblockUser) // Разблокировать
 		blockGroup.GET("/check", h.IsUserBlocked)                           // Является ли заблокированным
+	}
+}
+
+func initSettingsRoutes(api *gin.RouterGroup) {
+	repo := repository.NewSettingsRepository(userdb.GetDB())
+	sc := service.NewSettingsService(repo)
+	h := handler.NewSettingsHandler(sc)
+
+	setGroup := api.Group("/settings").Use(middleware.AuthMiddleware())
+	{
+		setGroup.GET("", h.GetSettings)
+		setGroup.PUT("", h.SaveSettings)
 	}
 }
