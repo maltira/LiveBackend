@@ -32,8 +32,8 @@ import (
 )
 
 func main() {
-	rdb := redis.AuthRedisClient()
 	config.Load()
+	rdb := redis.AuthRedisClient()
 	authdb.InitDB()
 
 	authRepo := NewAuthRepository(authdb.GetDB())
@@ -45,13 +45,13 @@ func main() {
 	api := r.Group("/api")
 
 	sensitive := api.Group("")
-	sensitive.Use(middleware.RateLimiterMiddleware(rdb, "10-M", "limiter:auth:"))
+	sensitive.Use(middleware.RateLimiterMiddleware(rdb, "30-M", "limiter:auth:"))
 	{
 		sensitive.POST("/auth/register", authHandler.Register)
 		sensitive.POST("/auth/login", authHandler.Login)
 		sensitive.POST("/auth/verify", authHandler.VerifyOTP)
 		sensitive.POST("/auth/refresh", authHandler.Refresh)
-
+		sensitive.POST("/auth/resend", authHandler.ResendOTP)
 	}
 
 	resetGroup := api.Group("")

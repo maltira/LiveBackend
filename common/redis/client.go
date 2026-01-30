@@ -13,8 +13,9 @@ import (
 )
 
 var (
-	once      sync.Once
-	authRedis *redis.Client
+	once        sync.Once
+	authRedis   *redis.Client
+	onlineRedis *redis.Client
 )
 
 func initClients() {
@@ -36,12 +37,17 @@ func initClients() {
 		}
 
 		authRedis = newClient(0)
+		onlineRedis = newClient(3)
 	})
 }
 
 func AuthRedisClient() *redis.Client {
 	initClients()
 	return authRedis
+}
+func OnlineRedisClient() *redis.Client {
+	initClients()
+	return onlineRedis
 }
 
 func Close() {

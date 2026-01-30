@@ -6,14 +6,13 @@ import (
 	"fmt"
 	"log"
 	"user/models"
-	"user/repository"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 )
 
 func StartUserEventsConsumer(db *gorm.DB) {
-	repo := repository.NewProfileRepository(db)
+	tx := db.Begin()
 
 	err := rabbitmq.Consume("user.events", func(body []byte) {
 		var event struct {
@@ -35,20 +34,25 @@ func StartUserEventsConsumer(db *gorm.DB) {
 			Username: name,
 			FullName: name,
 		}
-
-		_, err := repo.FindByID(userID)
-		if err == nil {
-			fmt.Printf("Ошибка. Такой пользователь уже существует %s: %v", userID, err)
-			return
+		settings := models.Settings{
+			ProfileID: userID,
 		}
 
-		if err = repo.Create(&profile); err != nil {
+		if err := tx.Create(&profile); err != nil {
 			log.Printf("Ошибка. Не удалось создать профиль %s: %v", userID, err)
+			tx.Rollback()
 			return
 		}
+		if err := tx.Create(settings).Error; err != nil {
+			log.Printf("Ошибка. Не удалось добавить настройки %s: %v", userID, err)
+			tx.Rollback()
+			return
+		}
+		tx.Commit()
 	})
 	if err != nil {
 		log.Fatalf("Failed to start consumer: %v", err)
 	}
 	log.Println("User events consumer started")
+
 }

@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"time"
 	"user/models"
 
 	"github.com/google/uuid"
@@ -14,6 +15,8 @@ type ProfileRepository interface {
 	GetAll() ([]models.Profile, error)
 	FindByID(userID uuid.UUID) (*models.Profile, error)
 	UsernameExists(username string) error
+
+	UpdateLastSeen(userID uuid.UUID, lastSeen time.Time) error
 }
 
 type profileRepository struct {
@@ -33,12 +36,12 @@ func (r *profileRepository) Update(user *models.Profile) error {
 
 func (r *profileRepository) GetAll() ([]models.Profile, error) {
 	var users []models.Profile
-	err := r.db.Find(&users).Error
+	err := r.db.Preload("Settings").Find(&users).Error
 	return users, err
 }
 func (r *profileRepository) FindByID(userID uuid.UUID) (*models.Profile, error) {
 	var user models.Profile
-	err := r.db.First(&user, "id = ?", userID).Error
+	err := r.db.Preload("Settings").First(&user, "id = ?", userID).Error
 	if err != nil {
 		return nil, err
 	}
@@ -46,4 +49,10 @@ func (r *profileRepository) FindByID(userID uuid.UUID) (*models.Profile, error) 
 }
 func (r *profileRepository) UsernameExists(username string) error {
 	return r.db.First(&models.Profile{}, "username = ?", username).Error
+}
+
+func (r *profileRepository) UpdateLastSeen(userID uuid.UUID, lastSeen time.Time) error {
+	return r.db.Model(&models.Profile{}).
+		Where("id = ?", userID).
+		Update("last_seen", lastSeen).Error
 }

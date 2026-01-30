@@ -24,6 +24,7 @@ import (
 	"user/handler"
 	"user/repository"
 	"user/service"
+	"user/ws"
 
 	userdb "user/database"
 
@@ -44,6 +45,7 @@ func main() {
 	initProfileRoutes(api)
 	initBlockRoutes(api)
 	initSettingsRoutes(api)
+	initWebSocketRoutes(api)
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
@@ -96,6 +98,8 @@ func initProfileRoutes(api *gin.RouterGroup) {
 		userGroup.GET("/:id", middleware.ValidateUUID(), h.FindProfile)
 
 		userGroup.GET("/username/:username/check", h.IsUsernameFree)
+
+		userGroup.GET("/:id/status", middleware.ValidateUUID(), h.GetUserStatus)
 	}
 }
 
@@ -122,5 +126,14 @@ func initSettingsRoutes(api *gin.RouterGroup) {
 	{
 		setGroup.GET("", h.GetSettings)
 		setGroup.PUT("", h.SaveSettings)
+	}
+}
+
+func initWebSocketRoutes(api *gin.RouterGroup) {
+	r := repository.NewProfileRepository(userdb.GetDB())
+	{
+		api.GET("/ws", middleware.AuthMiddleware(), func(c *gin.Context) {
+			ws.Connect(c, &r)
+		})
 	}
 }

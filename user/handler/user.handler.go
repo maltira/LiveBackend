@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"common/redis"
+	"context"
 	"errors"
 	"net/http"
 	"user/models/dto"
@@ -146,4 +148,27 @@ func (h *ProfileHandler) IsUsernameFree(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, isFree)
+}
+
+func (h *ProfileHandler) GetUserStatus(c *gin.Context) {
+	profileID := c.Param("id")
+	profileUUID := uuid.MustParse(profileID)
+
+	profile, err := h.sc.FindByID(profileUUID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		return
+	}
+
+	online, err := redis.OnlineRedisClient().Exists(context.Background(), "user:online:"+profileID).Result()
+	if online > 0 {
+		if !profile.Settings.ShowOnlineStatus {
+			c.JSON(http.StatusOK, dto.ProfileStatusResponse{Online: false})
+			return
+		}
+		c.JSON(http.StatusOK, dto.ProfileStatusResponse{Online: true})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.ProfileStatusResponse{Online: false, LastSeen: *profile.LastSeen})
 }

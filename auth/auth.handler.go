@@ -32,7 +32,7 @@ func NewAuthHandler(service *Service) *Handler {
 // @Accept json
 // @Produce json
 // @Param body body dto.AuthRequest true "Данные для регистрации"
-// @Success 200  {object} dto.TempTokenResponse "Временный токен для подтверждения OTP"
+// @Success 200  {object} dto.OTPSentResponse "Подтвердите регистрацию"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure      409  {object} dto.ErrorResponse "Пользователь с таким email уже существует"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -62,15 +62,9 @@ func (h *Handler) Register(c *gin.Context) {
 		return
 	}
 
-	// Генерируем временный токен
-	tempToken, err := utils.GenerateTempToken(id, 15*time.Minute, "register")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "failed to generate temp token"})
-		return
-	}
-
-	c.JSON(http.StatusOK, dto.TempTokenResponse{
-		TempToken: tempToken,
+	c.JSON(http.StatusOK, dto.OTPSentResponse{
+		UserID:  id,
+		Message: "OTP-код отправлен на указанную почту",
 	})
 }
 
@@ -81,7 +75,7 @@ func (h *Handler) Register(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        body body dto.AuthRequest true "Данные для входа"
-// @Success      200  {object} dto.TempTokenResponse "Временный токен для ввода OTP"
+// @Success      200  {object} dto.OTPSentResponse "Подтвердите вход"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure      401  {object} dto.ErrorResponse "Неверный email или пароль"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -106,15 +100,9 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	// Генерируем временный токен
-	tempToken, err := utils.GenerateTempToken(id, 15*time.Minute, "login")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "failed to generate temp token"})
-		return
-	}
-
-	c.JSON(http.StatusOK, dto.TempTokenResponse{
-		TempToken: tempToken,
+	c.JSON(http.StatusOK, dto.OTPSentResponse{
+		UserID:  id,
+		Message: "OTP-код отправлен на указанную почту",
 	})
 }
 
@@ -131,23 +119,13 @@ func (h *Handler) Login(c *gin.Context) {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/verify [post]
 func (h *Handler) VerifyOTP(c *gin.Context) {
-	var input dto.VerifyOTPRequest
-	if err := c.ShouldBindJSON(&input); err != nil {
+	var req dto.VerifyOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Incorrect data was transmitted in the body"})
 		return
 	}
 
-	// Проверяем временный токен
-	claims, err := utils.ValidateTempToken(input.TempToken)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "Invalid or expired temp token"})
-		return
-	}
-	userID := claims["id"].(string)
-	userUUID, _ := uuid.Parse(userID)
-	action := claims["action"].(string)
-
-	otp, err := h.service.repo.FindValidOTP(userUUID, input.Code)
+	otp, err := h.service.repo.FindValidOTP(req.UserID, req.Code)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "invalid or expired OTP"})
 		return
@@ -156,7 +134,7 @@ func (h *Handler) VerifyOTP(c *gin.Context) {
 	// Помечаем как использованный
 	err = h.service.repo.MarkOTPAsUsed(otp.ID)
 
-	user, err := h.service.GetUserByID(userUUID)
+	user, err := h.service.GetUserByID(req.UserID)
 	if err != nil {
 		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "invalid user"})
 		return
@@ -166,7 +144,7 @@ func (h *Handler) VerifyOTP(c *gin.Context) {
 	userAgent := c.Request.UserAgent()
 	device := utils.ParseDeviceInfo(userAgent)
 
-	if action == "login" {
+	if req.Action == "login" {
 		if user.ToBeDeletedAt != nil {
 			recoveryToken, err := utils.GenerateTempToken(user.ID, 15*time.Minute, "recovery_token")
 			if err != nil {
@@ -179,15 +157,15 @@ func (h *Handler) VerifyOTP(c *gin.Context) {
 			})
 			return
 		}
-		access, refresh, _ := h.service.GenerateTokens(userUUID, ip, userAgent, device)
+		access, refresh, _ := h.service.GenerateTokens(req.UserID, ip, userAgent, device)
 		c.SetCookie("access_token", access, 15*60, "/", "", false, true)
 		c.SetCookie("refresh_token", refresh, 30*24*60*60, "/", "", false, true)
 
 		c.JSON(http.StatusOK, dto.MessageResponse{
-			Message: "Успешный вход",
+			Message: "Успешная авторизация",
 		})
 		return
-	} else if action == "register" {
+	} else if req.Action == "register" {
 		user.IsVerified = true
 		err = h.service.UpdateUser(user)
 		if err != nil {
@@ -195,7 +173,7 @@ func (h *Handler) VerifyOTP(c *gin.Context) {
 			return
 		}
 
-		access, refresh, _ := h.service.GenerateTokens(userUUID, ip, userAgent, device)
+		access, refresh, _ := h.service.GenerateTokens(req.UserID, ip, userAgent, device)
 		c.SetCookie("access_token", access, 15*60, "/", "", false, true)
 		c.SetCookie("refresh_token", refresh, 30*24*60*60, "/", "", false, true)
 
@@ -214,19 +192,10 @@ func (h *Handler) VerifyOTP(c *gin.Context) {
 			Message: "Успешная регистрация",
 		})
 		return
-	} else if action == "forgot_password" {
-		// Генерируем временный токен
-		resetToken, err := utils.GenerateTempToken(user.ID, 15*time.Minute, "reset_token")
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "failed to generate reset token"})
-			return
-		}
-		fmt.Printf("\n*| reset_token: %s\n\n", resetToken) // как и OTP, надо отправлять на почту
-		return
 	}
 
-	c.JSON(http.StatusOK, dto.TempTokenResponse{
-		TempToken: input.TempToken,
+	c.JSON(http.StatusOK, dto.MessageResponse{
+		Message: "Почта подтверждена",
 	})
 }
 
@@ -259,6 +228,29 @@ func (h *Handler) Refresh(c *gin.Context) {
 	c.JSON(http.StatusOK, dto.MessageResponse{
 		Message: "Refresh successful",
 	})
+}
+
+func (h *Handler) ResendOTP(c *gin.Context) {
+	id := c.DefaultQuery("id", "")
+	email := c.DefaultQuery("email", "")
+
+	if id == "" || email == "" {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Требуются ID и Email"})
+		return
+	}
+
+	userID, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID"})
+		return
+	}
+
+	_, _, err = h.service.SendOTP(userID, email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP-кода"})
+		return
+	}
+	c.JSON(http.StatusOK, dto.MessageResponse{Message: "OTP-код сгенерирован"})
 }
 
 // ! Выход из профиля
@@ -335,7 +327,7 @@ func (h *Handler) LogoutAll(c *gin.Context) {
 // @Tags         reset
 // @Accept       json
 // @Produce      json
-// @Success      200  {object} dto.TempTokenResponse "Временный токен для следующего шага"
+// @Success      200  {object} dto.OTPSentResponse "Подтвердите сброс пароля"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/forgot-password [post]
@@ -349,7 +341,7 @@ func (h *Handler) ForgotPassword(c *gin.Context) {
 	user, err := h.service.repo.FindByEmail(email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusOK, dto.ErrorResponse{Code: 401, Error: "OTP code was sent"})
+			c.JSON(http.StatusOK, dto.ErrorResponse{Code: 404, Error: "Аккаунта с такими данными не существует"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
@@ -360,13 +352,6 @@ func (h *Handler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	// Генерируем временный токен
-	tempToken, err := utils.GenerateTempToken(user.ID, 15*time.Minute, "forgot_password")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "failed to generate temp token"})
-		return
-	}
-
 	// Отправляем OTP
 	_, _, err = h.service.SendOTP(user.ID, email)
 	if err != nil {
@@ -374,8 +359,9 @@ func (h *Handler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, dto.TempTokenResponse{
-		TempToken: tempToken,
+	c.JSON(http.StatusOK, dto.OTPSentResponse{
+		UserID:  user.ID,
+		Message: "OTP-код отправлен на указанную почту",
 	})
 }
 
@@ -399,24 +385,15 @@ func (h *Handler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	// Проверяем временный токен
-	claims, err := utils.ValidateTempToken(req.ResetToken)
-	if err != nil || claims["action"] != "reset_token" {
-		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: "Invalid or expired reset token"})
-		return
-	}
-
 	// Меняем пароль
-	userID := claims["id"].(string)
-	userUUID := uuid.MustParse(userID)
-	err = h.service.UpdatePassword(userUUID, req.NewPassword)
+	err := h.service.UpdatePassword(req.UserID, req.NewPassword)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
 
 	// Выходим со всех устройств
-	_ = h.service.RevokeAllRefreshTokens(userUUID)
+	_ = h.service.RevokeAllRefreshTokens(req.UserID)
 	accessToken, _ := c.Cookie("access_token")
 	if accessToken != "" {
 		_ = h.service.BlacklistAccessToken(c, accessToken)
@@ -443,7 +420,6 @@ func (h *Handler) Me(c *gin.Context) {
 	userID, _ := c.MustGet("userID").(uuid.UUID)
 
 	user, err := h.service.GetUserByID(userID)
-
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
@@ -452,7 +428,7 @@ func (h *Handler) Me(c *gin.Context) {
 		}
 		return
 	}
-	fmt.Println(userID, user, err)
+
 	c.JSON(http.StatusOK, user)
 }
 
@@ -522,6 +498,7 @@ func (h *Handler) Delete(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, dto.TempTokenResponse{
+		UserID:    userID,
 		TempToken: deleteToken,
 	})
 }
@@ -531,7 +508,7 @@ func (h *Handler) Delete(c *gin.Context) {
 // @Description  Отложенно удаляет аккаунт на 3 дня
 // @Tags         user
 // @Produce      json
-// @Success      200  {object} dto.TempTokenResponse "Успешный запрос"
+// @Success      200  {object} dto.MessageResponse "Успешный запрос"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      401  {object} dto.ErrorResponse "Некорректный токен"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -578,7 +555,7 @@ func (h *Handler) DeleteConfirm(c *gin.Context) {
 // @Description  Восстанавливает удаленный аккаунт
 // @Tags         user
 // @Produce      json
-// @Success      200  {object} dto.TempTokenResponse "Аккаунт восстановлен"
+// @Success      200  {object} dto.MessageResponse "Аккаунт восстановлен"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      401  {object} dto.ErrorResponse "Некорректный токен"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"

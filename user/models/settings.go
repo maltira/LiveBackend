@@ -11,6 +11,4 @@ type Settings struct {
 
 	DarkMode bool   `json:"dark_mode" gorm:"default:false;not null"`
 	Language string `json:"language" gorm:"default:'ru-RU';not null;check:language IN ('ru-RU', 'en-US')"`
-
-	Profile Profile `json:"-" gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE;"`
 }

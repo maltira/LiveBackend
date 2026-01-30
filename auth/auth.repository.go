@@ -86,7 +86,7 @@ func (r *Repository) CreateRefreshToken(token string, userID uuid.UUID, expiresA
 func (r *Repository) FindValidByToken(token string) (*models.RefreshToken, error) {
 	var rt models.RefreshToken
 	err := r.db.
-		Where("token = ? AND revoked = false AND expires_at > ?", token, time.Now()).
+		Where("token = ? AND expires_at > ?", token, time.Now()).
 		First(&rt).Error
 	if err != nil {
 		return nil, err

@@ -14,7 +14,10 @@ type Profile struct {
 	Bio       string     `json:"bio" gorm:"size:500"`
 	AvatarURL string     `json:"avatar_url" gorm:"size:255"`
 	BirthDate *time.Time `json:"birth_date" gorm:"default:null"`
+	LastSeen  *time.Time `json:"last_seen" gorm:"index"`
 
 	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
 	UpdatedAt time.Time `json:"updated_at" gorm:"autoUpdateTime"`
+
+	Settings Settings `gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE;"`
 }

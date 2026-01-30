@@ -12,10 +12,6 @@ type MessageResponse struct {
 	Message string `json:"message"`
 }
 
-type TempTokenResponse struct {
-	TempToken string `json:"temp_token"`
-}
-
 type User struct {
 	ID         uuid.UUID `json:"id"`
 	Email      string    `json:"email"`
