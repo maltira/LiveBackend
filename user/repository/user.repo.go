@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"strings"
 	"time"
 	"user/models"
 
@@ -13,6 +14,7 @@ type ProfileRepository interface {
 	Update(user *models.Profile) error
 
 	GetAll() ([]models.Profile, error)
+	GetAllBySearch(query string, limit int) ([]models.Profile, error)
 	FindByID(userID uuid.UUID) (*models.Profile, error)
 	UsernameExists(username string) error
 
@@ -38,6 +40,26 @@ func (r *profileRepository) GetAll() ([]models.Profile, error) {
 	var users []models.Profile
 	err := r.db.Preload("Settings").Find(&users).Error
 	return users, err
+}
+func (r *profileRepository) GetAllBySearch(query string, limit int) ([]models.Profile, error) {
+	if len(query) < 4 {
+		return []models.Profile{}, nil
+	}
+	var users []models.Profile
+	cleanQuery := strings.TrimSpace(strings.TrimPrefix(query, "@"))
+
+	q := r.db.
+		Where("username ILIKE ?", cleanQuery+"%").                    // префиксный поиск
+		Order(gorm.Expr("similarity(username, ?) DESC", cleanQuery)). // сортировка по похожести
+		Order("username ASC").                                        // затем по алфавиту
+		Limit(limit)
+
+	result := q.Find(&users)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+
+	return users, nil
 }
 func (r *profileRepository) FindByID(userID uuid.UUID) (*models.Profile, error) {
 	var user models.Profile

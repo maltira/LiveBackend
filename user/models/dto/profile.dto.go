@@ -2,6 +2,7 @@ package dto
 
 import (
 	"time"
+	"user/models"
 )
 
 type UpdateProfileRequest struct {
@@ -15,4 +16,8 @@ type UpdateProfileRequest struct {
 type ProfileStatusResponse struct {
 	Online   bool      `json:"online"`
 	LastSeen time.Time `json:"last_seen,omitempty"`
+}
+
+type SearchResponse struct {
+	Profiles []models.Profile `json:"profiles"`
 }

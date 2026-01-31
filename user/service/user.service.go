@@ -15,6 +15,7 @@ type ProfileService interface {
 	Update(userID uuid.UUID, profile *dto.UpdateProfileRequest) error
 
 	GetAll() ([]models.Profile, error)
+	GetAllBySearch(search string, limit int) ([]models.Profile, error)
 	FindByID(userID uuid.UUID) (*models.Profile, error)
 	IsUsernameFree(username string) (bool, error)
 }
@@ -74,6 +75,9 @@ func (sc *profileService) Update(userID uuid.UUID, profile *dto.UpdateProfileReq
 
 func (sc *profileService) GetAll() ([]models.Profile, error) {
 	return sc.repo.GetAll()
+}
+func (sc *profileService) GetAllBySearch(search string, limit int) ([]models.Profile, error) {
+	return sc.repo.GetAllBySearch(search, limit)
 }
 func (sc *profileService) FindByID(userID uuid.UUID) (*models.Profile, error) {
 	return sc.repo.FindByID(userID)

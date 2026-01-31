@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"user/models/dto"
 	"user/service"
 
@@ -85,6 +86,23 @@ func (h *ProfileHandler) FindProfile(c *gin.Context) {
 // @Router       /user/profile/all [get]
 func (h *ProfileHandler) FindAll(c *gin.Context) {
 	profiles, err := h.sc.GetAll()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, profiles)
+}
+
+func (h *ProfileHandler) SearchProfiles(c *gin.Context) {
+	query := c.Query("q")
+	l := c.DefaultQuery("limit", "10")
+
+	limit, _ := strconv.Atoi(l)
+	if limit < 1 || limit > 20 {
+		limit = 5
+	}
+
+	profiles, err := h.sc.GetAllBySearch(query, limit)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return

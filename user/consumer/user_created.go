@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"user/models"
+	"user/utils"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -30,9 +31,10 @@ func StartUserEventsConsumer(db *gorm.DB) {
 
 		name := "user_" + event.UserID[:8]
 		profile := models.Profile{
-			ID:       userID,
-			Username: name,
-			FullName: name,
+			ID:        userID,
+			Username:  name,
+			FullName:  name,
+			AvatarURL: utils.RandomAvatar(),
 		}
 		settings := models.Settings{
 			ProfileID: userID,

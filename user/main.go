@@ -93,6 +93,7 @@ func initProfileRoutes(api *gin.RouterGroup) {
 	userGroup := api.Group("/profile").Use(middleware.AuthMiddleware())
 	{
 		userGroup.GET("/all", h.FindAll)
+		userGroup.GET("search", h.SearchProfiles)
 		userGroup.GET("", h.GetProfile)
 		userGroup.PUT("", h.UpdateProfile)
 		userGroup.GET("/:id", middleware.ValidateUUID(), h.FindProfile)
