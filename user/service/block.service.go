@@ -11,9 +11,9 @@ import (
 
 type BlockService interface {
 	GetAllBlocks(userID uuid.UUID) ([]models.Block, error)
-	IsBlock(userID uuid.UUID, blockedUserID uuid.UUID) (bool, error)
+	IsBlock(ID uuid.UUID, targetID uuid.UUID) (bool, error)
 
-	BlockUser(userID uuid.UUID, blockedUserID uuid.UUID) error
+	BlockUser(userID uuid.UUID, blockedUserID uuid.UUID) (*models.Block, error)
 	UnblockUser(userID uuid.UUID, blockedUserID uuid.UUID) error
 }
 
@@ -29,8 +29,8 @@ func (sc *blockService) GetAllBlocks(userID uuid.UUID) ([]models.Block, error) {
 	return sc.repo.GetAllBlocks(userID)
 }
 
-func (sc *blockService) IsBlock(userID uuid.UUID, blockedUserID uuid.UUID) (bool, error) {
-	err := sc.repo.CheckBlock(userID, blockedUserID)
+func (sc *blockService) IsBlock(ID uuid.UUID, targetID uuid.UUID) (bool, error) {
+	err := sc.repo.CheckBlock(ID, targetID)
 	if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, nil
 	} else if err != nil {
@@ -39,11 +39,11 @@ func (sc *blockService) IsBlock(userID uuid.UUID, blockedUserID uuid.UUID) (bool
 	return true, nil
 }
 
-func (sc *blockService) BlockUser(userID uuid.UUID, blockedUserID uuid.UUID) error {
+func (sc *blockService) BlockUser(userID uuid.UUID, blockedUserID uuid.UUID) (*models.Block, error) {
 	if userID == blockedUserID {
-		return errors.New("нельзя заблокировать свой профиль")
+		return nil, errors.New("нельзя заблокировать свой профиль")
 	}
-	var block models.Block = models.Block{
+	var block = models.Block{
 		ProfileID:        userID,
 		BlockedProfileID: blockedUserID,
 	}

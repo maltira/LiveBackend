@@ -13,7 +13,4 @@ type Block struct {
 	BlockedProfileID uuid.UUID `json:"blocked_profile_id" gorm:"type:uuid;not null;index"`
 
 	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
-
-	// связи
-	Profile Profile `gorm:"foreignKey:BlockedProfileID;references:ID"`
 }

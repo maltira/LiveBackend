@@ -40,17 +40,18 @@ func StartUserEventsConsumer(db *gorm.DB) {
 			ProfileID: userID,
 		}
 
-		if err := tx.Create(&profile); err != nil {
+		if err := tx.Create(&profile).Error; err != nil {
 			log.Printf("Ошибка. Не удалось создать профиль %s: %v", userID, err)
 			tx.Rollback()
 			return
 		}
-		if err := tx.Create(settings).Error; err != nil {
+		if err := tx.Create(&settings).Error; err != nil {
 			log.Printf("Ошибка. Не удалось добавить настройки %s: %v", userID, err)
 			tx.Rollback()
 			return
+		} else {
+			tx.Commit()
 		}
-		tx.Commit()
 	})
 	if err != nil {
 		log.Fatalf("Failed to start consumer: %v", err)

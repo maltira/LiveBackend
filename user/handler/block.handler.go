@@ -37,26 +37,24 @@ func (h *BlockHandler) GetAllBlocks(c *gin.Context) {
 	c.JSON(http.StatusOK, blocks)
 }
 
-// IsUserBlocked
-// @Summary      Проверка, заблокирован ли пользователь
-// @Description  Проверяет, находится ли указанный пользователь в чёрном списке
+// IsBlocked
+// @Summary      Проверка, заблокирован ли текущий пользователь
+// @Description  Проверяет, находится ли текущий пользователь в чёрном списке
 // @Tags         block
 // @Accept       json
 // @Produce      json
-// @Param        body body dto.BlockRequest true "ID проверяемого пользователя"
+// @Param        id path string true "ID пользователя для проверки" Format(uuid)
 // @Success      200  {object} bool "true — заблокирован, false — нет"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      401  {object} dto.ErrorResponse "Неавторизован"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
 // @Router       /user/block/check [get]
-func (h *BlockHandler) IsUserBlocked(c *gin.Context) {
-	var req dto.BlockRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: http.StatusBadRequest, Error: "Некорректные данные в теле запроса"})
-		return
-	}
+func (h *BlockHandler) IsBlocked(c *gin.Context) {
+	meID := c.MustGet("userID").(uuid.UUID)
+	target := c.Param("id")
+	targetID := uuid.MustParse(target)
 
-	isBlocked, err := h.sc.IsBlock(req.ProfileID, req.BlockedProfileID)
+	isBlocked, err := h.sc.IsBlock(targetID, meID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
@@ -71,7 +69,7 @@ func (h *BlockHandler) IsUserBlocked(c *gin.Context) {
 // @Tags         block
 // @Produce      json
 // @Param        id path string true "ID пользователя для блокировки" Format(uuid)
-// @Success      200  {object} dto.MessageResponse "Пользователь заблокирован"
+// @Success      200  {object} models.Block "Пользователь заблокирован"
 // @Failure      400  {object} dto.ErrorResponse "Некорректный ID"
 // @Failure      401  {object} dto.ErrorResponse "Неавторизован"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
@@ -81,12 +79,12 @@ func (h *BlockHandler) BlockUser(c *gin.Context) {
 	blockID := c.Param("id")
 	blockUUID := uuid.MustParse(blockID)
 
-	err := h.sc.BlockUser(id, blockUUID)
+	blockedProfile, err := h.sc.BlockUser(id, blockUUID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, dto.MessageResponse{Message: "Пользователь добавлен в черный список"})
+	c.JSON(http.StatusOK, blockedProfile)
 }
 
 // UnblockUser

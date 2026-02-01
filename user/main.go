@@ -111,10 +111,10 @@ func initBlockRoutes(api *gin.RouterGroup) {
 
 	blockGroup := api.Group("/block").Use(middleware.AuthMiddleware())
 	{
-		blockGroup.GET("/all", h.GetAllBlocks)                              // Список заблокированных пользователей
-		blockGroup.POST("/:id", middleware.ValidateUUID(), h.BlockUser)     // Заблокировать пользователя
-		blockGroup.DELETE("/:id", middleware.ValidateUUID(), h.UnblockUser) // Разблокировать
-		blockGroup.GET("/check", h.IsUserBlocked)                           // Является ли заблокированным
+		blockGroup.GET("/all", h.GetAllBlocks)                               // Список заблокированных пользователей
+		blockGroup.POST("/:id", middleware.ValidateUUID(), h.BlockUser)      // Заблокировать пользователя
+		blockGroup.DELETE("/:id", middleware.ValidateUUID(), h.UnblockUser)  // Разблокировать
+		blockGroup.GET("/check/:id", middleware.ValidateUUID(), h.IsBlocked) // Является ли заблокированным
 	}
 }
 

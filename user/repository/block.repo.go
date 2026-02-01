@@ -9,9 +9,9 @@ import (
 
 type BlockRepository interface {
 	GetAllBlocks(userID uuid.UUID) ([]models.Block, error)
-	CheckBlock(userID uuid.UUID, blockedUserID uuid.UUID) error
+	CheckBlock(ID uuid.UUID, targetID uuid.UUID) error
 
-	BlockUser(Block *models.Block) error
+	BlockUser(block *models.Block) (*models.Block, error)
 	UnblockUser(userID, blockedUserID uuid.UUID) error
 }
 
@@ -25,16 +25,19 @@ func NewBlockRepository(db *gorm.DB) BlockRepository {
 
 func (r *blockRepository) GetAllBlocks(userID uuid.UUID) ([]models.Block, error) {
 	var blocks []models.Block
-	err := r.db.Where("profile_id = ?", userID).Preload("Profile").Find(&blocks).Error
+	err := r.db.Where("profile_id = ?", userID).Find(&blocks).Error
 	return blocks, err
 }
 
-func (r *blockRepository) CheckBlock(userID uuid.UUID, blockedUserID uuid.UUID) error {
-	return r.db.First(&models.Block{}, "profile_id = ? AND blocked_profile_id = ?", userID, blockedUserID).Error
+func (r *blockRepository) CheckBlock(ID uuid.UUID, targetID uuid.UUID) error {
+	return r.db.First(&models.Block{}, "profile_id = ? AND blocked_profile_id = ?", ID, targetID).Error
 }
 
-func (r *blockRepository) BlockUser(Block *models.Block) error {
-	return r.db.Create(Block).Error
+func (r *blockRepository) BlockUser(req *models.Block) (*models.Block, error) {
+	if err := r.db.Create(&req).Error; err != nil {
+		return nil, err
+	}
+	return req, nil
 }
 
 func (r *blockRepository) UnblockUser(userID, blockedUserID uuid.UUID) error {
