@@ -65,6 +65,7 @@ func main() {
 
 	// Получаем события в фоне
 	go consumer.StartUserEventsConsumer(userdb.GetDB())
+	go ws.PubSubBlock()
 
 	// ? Завершение
 

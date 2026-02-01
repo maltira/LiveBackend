@@ -54,7 +54,7 @@ func (r *profileRepository) GetAllBySearch(query string, limit int) ([]models.Pr
 		Order("username ASC").                                        // затем по алфавиту
 		Limit(limit)
 
-	result := q.Find(&users)
+	result := q.Preload("Settings").Find(&users)
 	if result.Error != nil {
 		return nil, result.Error
 	}

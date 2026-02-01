@@ -178,7 +178,7 @@ func (h *ProfileHandler) GetUserStatus(c *gin.Context) {
 		return
 	}
 
-	online, err := redis.OnlineRedisClient().Exists(context.Background(), "user:online:"+profileID).Result()
+	online, err := redis.EventsRedisClient().Exists(context.Background(), "user:online:"+profileID).Result()
 	if online > 0 {
 		if !profile.Settings.ShowOnlineStatus {
 			c.JSON(http.StatusOK, dto.ProfileStatusResponse{Online: false})

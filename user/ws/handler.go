@@ -1,6 +1,9 @@
 package ws
 
 import (
+	"common/redis"
+	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"time"
@@ -44,16 +47,45 @@ func Connect(c *gin.Context, r *repository.ProfileRepository) {
 		return
 	}
 
-	go readPump(client, r)
-	go writePump(client)
+	go readPong(client, r)
+	go writePing(client) // TODO: починить на websocket отображение статуса в realtime
 	log.Printf("User %s connected via WebSocket", userID)
 }
 
-func readPump(c *Client, r *repository.ProfileRepository) {
-	ticker := time.NewTicker(30 * time.Second)
-	defer func() {
-		ticker.Stop()
+func PubSubBlock() {
+	pubsub := redis.EventsRedisClient().Subscribe(context.Background(), "block:events")
+	defer pubsub.Close()
 
+	for msg := range pubsub.Channel() {
+		var event struct {
+			Type      string `json:"type"`
+			BlockerID string `json:"blocker_id"`
+			BlockedID string `json:"blocked_id"`
+			IsBlocked bool   `json:"is_blocked"`
+		}
+		if err := json.Unmarshal([]byte(msg.Payload), &event); err != nil {
+			log.Printf("Invalid block event: %v", err)
+			continue
+		}
+
+		// Рассылаем только заблокированному пользователю
+		ClientsMu.RLock()
+		blockedClient, exists := Clients[uuid.MustParse(event.BlockedID)]
+		if exists && blockedClient.Conn != nil {
+			blockedClient.mu.Lock()
+			err := blockedClient.Conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
+			blockedClient.mu.Unlock()
+
+			if err != nil {
+				log.Printf("Failed to send block event to %s: %v", event.BlockedID, err)
+			}
+		}
+		ClientsMu.RUnlock()
+	}
+}
+
+func readPong(c *Client, r *repository.ProfileRepository) {
+	defer func() {
 		// Удаляем клиента из карты
 		ClientsMu.Lock()
 		delete(Clients, c.UserID)
@@ -88,19 +120,19 @@ func readPump(c *Client, r *repository.ProfileRepository) {
 	}
 }
 
-func writePump(c *Client) {
+func writePing(c *Client) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
 		case <-ticker.C:
+			c.mu.Lock()
 			if err := c.Conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(10*time.Second)); err != nil {
 				log.Printf("Ping failed for user %s: %v", c.UserID, err)
 				return
-			} else {
-				log.Printf("Ping sent to user %s", c.UserID)
 			}
+			c.mu.Unlock()
 		}
 	}
 }

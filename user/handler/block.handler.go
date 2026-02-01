@@ -1,9 +1,11 @@
 package handler
 
 import (
+	"log"
 	"net/http"
 	"user/models/dto"
 	"user/service"
+	"user/utils"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -84,6 +86,12 @@ func (h *BlockHandler) BlockUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
+
+	// Публикация события (is_blocked: true)
+	if err = utils.PublishBlockEvent(id, blockUUID, true); err != nil {
+		log.Printf("Failed to publish block event: %v", err)
+	}
+
 	c.JSON(http.StatusOK, blockedProfile)
 }
 
@@ -108,5 +116,11 @@ func (h *BlockHandler) UnblockUser(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
+
+	// Публикация события (is_blocked: false)
+	if err = utils.PublishBlockEvent(id, blockedUUID, false); err != nil {
+		log.Printf("Failed to publish unblock event: %v", err)
+	}
+
 	c.JSON(http.StatusOK, dto.MessageResponse{Message: "Пользователь удалён из черного списка"})
 }

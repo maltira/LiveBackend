@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	once        sync.Once
-	authRedis   *redis.Client
-	onlineRedis *redis.Client
+	once       sync.Once
+	authRedis  *redis.Client
+	eventRedis *redis.Client
 )
 
 func initClients() {
@@ -37,7 +37,7 @@ func initClients() {
 		}
 
 		authRedis = newClient(0)
-		onlineRedis = newClient(3)
+		eventRedis = newClient(3)
 	})
 }
 
@@ -45,9 +45,9 @@ func AuthRedisClient() *redis.Client {
 	initClients()
 	return authRedis
 }
-func OnlineRedisClient() *redis.Client {
+func EventsRedisClient() *redis.Client {
 	initClients()
-	return onlineRedis
+	return eventRedis
 }
 
 func Close() {
@@ -57,6 +57,11 @@ func Close() {
 		}
 		authRedis = nil
 	}
-	// userRedis.Close()
+	if eventRedis != nil {
+		if err := eventRedis.Close(); err != nil {
+			log.Printf("Ошибка закрыт Redis (event): %v", err)
+		}
+		eventRedis = nil
+	}
 	fmt.Println("redis connection closed")
 }

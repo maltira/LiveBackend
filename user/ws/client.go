@@ -10,6 +10,7 @@ import (
 type Client struct {
 	UserID uuid.UUID
 	Conn   *websocket.Conn
+	mu     sync.Mutex
 }
 
 var (
