@@ -1,13 +1,12 @@
 package handler
 
 import (
-	"common/redis"
-	"context"
 	"errors"
 	"net/http"
 	"strconv"
 	"user/models/dto"
 	"user/service"
+	"user/ws"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -178,15 +177,23 @@ func (h *ProfileHandler) GetUserStatus(c *gin.Context) {
 		return
 	}
 
-	online, err := redis.EventsRedisClient().Exists(context.Background(), "user:online:"+profileID).Result()
-	if online > 0 {
-		if !profile.Settings.ShowOnlineStatus {
-			c.JSON(http.StatusOK, dto.ProfileStatusResponse{Online: false})
-			return
-		}
-		c.JSON(http.StatusOK, dto.ProfileStatusResponse{Online: true})
+	if !profile.Settings.ShowOnlineStatus {
+		c.JSON(http.StatusOK, dto.ProfileStatusResponse{
+			Online:   false,
+			LastSeen: nil,
+		})
 		return
 	}
 
-	c.JSON(http.StatusOK, dto.ProfileStatusResponse{Online: false, LastSeen: *profile.LastSeen})
+	isOnline := ws.IsClientOnline(profileUUID)
+	response := dto.ProfileStatusResponse{
+		Online:   isOnline,
+		LastSeen: nil,
+	}
+
+	if !isOnline {
+		response.LastSeen = &profile.LastSeen
+	}
+
+	c.JSON(http.StatusOK, response)
 }

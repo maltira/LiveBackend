@@ -66,6 +66,7 @@ func main() {
 	// Получаем события в фоне
 	go consumer.StartUserEventsConsumer(userdb.GetDB())
 	go ws.PubSubBlock()
+	go ws.PubSubStatus()
 
 	// ? Завершение
 
@@ -74,7 +75,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	fmt.Println("\n[Shutting down]")
+	log.Println("\n[Shutting down]")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

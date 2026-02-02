@@ -41,28 +41,23 @@ func Connect(c *gin.Context, r *repository.ProfileRepository) {
 	Clients[userID] = client
 	ClientsMu.Unlock()
 
-	if err = utils.SetOnline(userID); err != nil {
-		log.Printf("Failed to set online for %s: %v", userID, err)
-		_ = conn.Close()
-		return
-	}
+	utils.SetOnline(userID)
 
 	go readPong(client, r)
-	go writePing(client) // TODO: починить на websocket отображение статуса в realtime
+	go writePing(client)
 	log.Printf("User %s connected via WebSocket", userID)
 }
 
+// ? Подписки на события
+
 func PubSubBlock() {
 	pubsub := redis.EventsRedisClient().Subscribe(context.Background(), "block:events")
-	defer pubsub.Close()
+	defer func() {
+		_ = pubsub.Close()
+	}()
 
 	for msg := range pubsub.Channel() {
-		var event struct {
-			Type      string `json:"type"`
-			BlockerID string `json:"blocker_id"`
-			BlockedID string `json:"blocked_id"`
-			IsBlocked bool   `json:"is_blocked"`
-		}
+		var event utils.BlockEvent
 		if err := json.Unmarshal([]byte(msg.Payload), &event); err != nil {
 			log.Printf("Invalid block event: %v", err)
 			continue
@@ -83,6 +78,32 @@ func PubSubBlock() {
 		ClientsMu.RUnlock()
 	}
 }
+func PubSubStatus() {
+	pubsub := redis.EventsRedisClient().Subscribe(context.Background(), "status:events")
+	defer func() {
+		_ = pubsub.Close()
+	}()
+
+	for msg := range pubsub.Channel() {
+		var event utils.StatusEvent
+		if err := json.Unmarshal([]byte(msg.Payload), &event); err != nil {
+			continue
+		}
+
+		ClientsMu.RLock()
+		for _, client := range Clients {
+			if client.Conn == nil {
+				continue
+			}
+			client.mu.Lock()
+			_ = client.Conn.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
+			client.mu.Unlock()
+		}
+		ClientsMu.RUnlock()
+	}
+}
+
+// ? Проверка статуса онлайн
 
 func readPong(c *Client, r *repository.ProfileRepository) {
 	defer func() {
@@ -91,9 +112,7 @@ func readPong(c *Client, r *repository.ProfileRepository) {
 		delete(Clients, c.UserID)
 		ClientsMu.Unlock()
 
-		if err := utils.SetOffline(c.UserID, r); err != nil {
-			log.Printf("Failed to set offline for %s: %v", c.UserID, err)
-		}
+		utils.SetOffline(c.UserID, r)
 
 		_ = c.Conn.Close()
 		log.Printf("User %s disconnected", c.UserID)
@@ -104,7 +123,7 @@ func readPong(c *Client, r *repository.ProfileRepository) {
 	c.Conn.SetPongHandler(func(string) error {
 		// клиент ответил pong - продлеваем deadline и онлайн
 		_ = c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
-		_ = utils.SetOnline(c.UserID)
+		utils.SetOnline(c.UserID)
 		return nil
 	})
 	c.Conn.SetReadLimit(512)
@@ -119,7 +138,6 @@ func readPong(c *Client, r *repository.ProfileRepository) {
 		}
 	}
 }
-
 func writePing(c *Client) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()

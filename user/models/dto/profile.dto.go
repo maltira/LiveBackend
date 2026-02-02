@@ -14,8 +14,8 @@ type UpdateProfileRequest struct {
 }
 
 type ProfileStatusResponse struct {
-	Online   bool      `json:"online"`
-	LastSeen time.Time `json:"last_seen,omitempty"`
+	Online   bool       `json:"online"`
+	LastSeen *time.Time `json:"last_seen,omitempty"`
 }
 
 type SearchResponse struct {

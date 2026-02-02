@@ -17,3 +17,10 @@ var (
 	Clients   = make(map[uuid.UUID]*Client)
 	ClientsMu sync.RWMutex
 )
+
+func IsClientOnline(clientID uuid.UUID) bool {
+	ClientsMu.RLock()
+	c, exists := Clients[clientID]
+	ClientsMu.RUnlock()
+	return exists && c.Conn != nil
+}
