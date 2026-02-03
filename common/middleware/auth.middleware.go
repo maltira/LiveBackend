@@ -1,8 +1,8 @@
 package middleware
 
 import (
+	"auth/redis"
 	"auth/utils"
-	"common/redis"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -27,8 +27,8 @@ func AuthMiddleware() gin.HandlerFunc {
 
 		jti, _ := claims["jti"].(string)
 		if jti != "" {
-			key := "blacklist:access:" + jti
-			exists, _ := redis.AuthRedisClient().Get(c.Request.Context(), key).Result()
+			key := "auth:blacklist:access:" + jti
+			exists, _ := redis.GetAuthRedis().Get(c.Request.Context(), key).Result()
 			if exists != "" { // ключ существует -> токен отозван
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token revoked"})
 				return

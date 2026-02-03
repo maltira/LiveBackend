@@ -1,12 +1,12 @@
 package ws
 
 import (
-	"common/redis"
 	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"time"
+	"user/redis"
 	"user/repository"
 	"user/utils"
 
@@ -51,7 +51,7 @@ func Connect(c *gin.Context, r *repository.ProfileRepository) {
 // ? Подписки на события
 
 func PubSubBlock() {
-	pubsub := redis.EventsRedisClient().Subscribe(context.Background(), "block:events")
+	pubsub := redis.GetUserRedis().Subscribe(context.Background(), "user:block:events")
 	defer func() {
 		_ = pubsub.Close()
 	}()
@@ -79,7 +79,7 @@ func PubSubBlock() {
 	}
 }
 func PubSubStatus() {
-	pubsub := redis.EventsRedisClient().Subscribe(context.Background(), "status:events")
+	pubsub := redis.GetUserRedis().Subscribe(context.Background(), "user:status:events")
 	defer func() {
 		_ = pubsub.Close()
 	}()

@@ -1,10 +1,9 @@
 package utils
 
 import (
-	"common/redis"
 	"context"
 	"encoding/json"
-	"fmt"
+	"user/redis"
 
 	"github.com/google/uuid"
 )
@@ -39,8 +38,8 @@ func PublishBlockEvent(blockerID, blockedID uuid.UUID, isBlocked bool) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("blocked", isBlocked, blockedID.String())
-	return redis.EventsRedisClient().Publish(ctx, "block:events", bytes).Err()
+
+	return redis.GetUserRedis().Publish(ctx, "user:block:events", bytes).Err()
 }
 
 func PublishStatusEvent(userID uuid.UUID, online bool, lastSeen string) error {
@@ -57,5 +56,5 @@ func PublishStatusEvent(userID uuid.UUID, online bool, lastSeen string) error {
 		return err
 	}
 
-	return redis.EventsRedisClient().Publish(ctx, "status:events", bytes).Err()
+	return redis.GetUserRedis().Publish(ctx, "user:status:events", bytes).Err()
 }

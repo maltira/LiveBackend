@@ -3,7 +3,6 @@ package rabbitmq
 import (
 	"common/config"
 	"context"
-	"fmt"
 	"log"
 	"sync"
 
@@ -89,5 +88,5 @@ func Close() {
 	if conn != nil {
 		_ = conn.Close()
 	}
-	fmt.Println("RabbitMQ connection closed")
+	log.Println("RabbitMQ connection closed")
 }

@@ -44,12 +44,12 @@ func GetDB() *gorm.DB {
 func CloseDB() {
 	sqlDB, err := db.DB()
 	if err != nil {
-		log.Printf("Ошибка получения sql.DB: %v", err)
+		log.Printf("Connection error to sql.DB: %v", err)
 		return
 	}
 	if err := sqlDB.Close(); err != nil {
-		log.Printf("Ошибка закрытия PostgreSQL: %v", err)
+		log.Printf("PostgreSQL closing error: %v", err)
 	}
 	db = nil
-	fmt.Println("database connection closed")
+	log.Println("Database connection closed")
 }

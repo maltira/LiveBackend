@@ -9,13 +9,12 @@ package main
 
 import (
 	authdb "auth/database"
+	"auth/redis"
 	"common/config"
 	"common/middleware"
 	"common/rabbitmq"
-	"common/redis"
 	"context"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -33,7 +32,7 @@ import (
 
 func main() {
 	config.Load()
-	rdb := redis.AuthRedisClient()
+	rdb := redis.GetAuthRedis()
 	authdb.InitDB()
 
 	authRepo := NewAuthRepository(authdb.GetDB())
@@ -45,7 +44,7 @@ func main() {
 	api := r.Group("/api")
 
 	sensitive := api.Group("")
-	sensitive.Use(middleware.RateLimiterMiddleware(rdb, "30-M", "limiter:auth:"))
+	sensitive.Use(middleware.RateLimiterMiddleware(rdb, "30-M", "auth:limiter:auth:"))
 	{
 		sensitive.POST("/auth/register", authHandler.Register)
 		sensitive.POST("/auth/login", authHandler.Login)
@@ -55,7 +54,7 @@ func main() {
 	}
 
 	resetGroup := api.Group("")
-	resetGroup.Use(middleware.RateLimiterMiddleware(rdb, "3-H", "limiter:reset:"))
+	resetGroup.Use(middleware.RateLimiterMiddleware(rdb, "3-H", "auth:limiter:reset:"))
 	{
 		resetGroup.POST("/auth/forgot-password", authHandler.ForgotPassword)
 		resetGroup.POST("/auth/reset-password", authHandler.ResetPassword)
@@ -82,7 +81,7 @@ func main() {
 		Handler: r,
 	}
 
-	fmt.Println("[Swagger] Auth swagger was launched at http://localhost:8001/swagger/index.html#/")
+	log.Println("[Swagger] Auth swagger was launched at http://localhost:8001/swagger/index.html#/")
 	go func() {
 		log.Printf("Auth service starting on %s", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -95,7 +94,7 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	fmt.Println("\n[Shutting down]")
+	log.Println("[Shutting down]")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
