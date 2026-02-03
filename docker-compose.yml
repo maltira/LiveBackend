@@ -1,0 +1,35 @@
+services:
+  redis:
+    container_name: chat-redis
+    image: redis:latest
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+  rabbitmq:
+    container_name: chat-rabbitmq
+    image: rabbitmq:latest
+    restart: unless-stopped
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+  auth:
+    container_name: chat-auth
+    build:
+      context: ./auth
+      dockerfile: Dockerfile
+    image: chat-platform/auth
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    depends_on:
+      - redis
+      - rabbitmq
+    volumes:
+      - ./.env:/app/.env
+volumes:
+  redis-data:
+  rabbitmq-data:
