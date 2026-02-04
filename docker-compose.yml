@@ -30,6 +30,34 @@ services:
       - rabbitmq
     volumes:
       - ./.env:/app/.env
+  user:
+    container_name: chat-user
+    build:
+      context: ./user
+      dockerfile: Dockerfile
+    image: chat-platform/user
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    depends_on:
+      - redis
+      - rabbitmq
+    volumes:
+      - ./.env:/app/.env
+  chat:
+    container_name: chat-data
+    build:
+      context: ./chat
+      dockerfile: Dockerfile
+    image: chat-platform/chat
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    depends_on:
+      - redis
+      - rabbitmq
+    volumes:
+      - ./.env:/app/.env
 volumes:
   redis-data:
   rabbitmq-data:
