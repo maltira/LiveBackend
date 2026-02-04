@@ -9,6 +9,7 @@ import (
 type Config struct {
 	PortAuth string
 	PortUser string
+	PortChat string
 	AppPort  string
 }
 
@@ -22,6 +23,7 @@ func InitEnv() {
 	Env = &Config{
 		PortAuth: os.Getenv("PORT_AUTH"),
 		PortUser: os.Getenv("PORT_USER"),
+		PortChat: os.Getenv("PORT_CHAT"),
 		AppPort:  os.Getenv("PORT_USER"),
 	}
 }

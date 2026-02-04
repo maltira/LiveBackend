@@ -24,8 +24,10 @@ func main() {
 
 	authGroup := api.Group("/auth")
 	userGroup := api.Group("/user")
+	chatGroup := api.Group("/chat")
 	proxyToBackend("http://localhost:"+config.Env.PortAuth, authGroup)
 	proxyToBackend("http://localhost:"+config.Env.PortUser, userGroup)
+	proxyToBackend("http://localhost:"+config.Env.PortChat, chatGroup)
 
 	err := r.Run(":" + config.Env.AppPort)
 	if err != nil {
