@@ -12,6 +12,7 @@ import (
 
 type ParticipantService interface {
 	GetParticipantByID(chatID, userID uuid.UUID) (*models.Participant, error)
+	GetAllParticipants(chatID uuid.UUID) ([]models.Participant, error)
 	IsParticipant(chatID, userID uuid.UUID) bool
 
 	JoinToChat(chatID uuid.UUID, userID uuid.UUID) error
@@ -33,6 +34,10 @@ func NewParticipantService(repo repository.ParticipantRepository, chatRepo repos
 
 func (sc *participantService) GetParticipantByID(chatID, userID uuid.UUID) (*models.Participant, error) {
 	return sc.repo.GetParticipantByID(chatID, userID)
+}
+
+func (sc *participantService) GetAllParticipants(chatID uuid.UUID) ([]models.Participant, error) {
+	return sc.repo.GetAllParticipants(chatID)
 }
 
 func (sc *participantService) IsParticipant(chatID, userID uuid.UUID) bool {

@@ -13,7 +13,7 @@ type MsgCreateRequest struct {
 }
 
 type MsgUpdateRequest struct {
-	Content        string     `json:"content"`
+	Content        string     `json:"content" binding:"required,min=1,max=4096"`
 	ReplyToMessage *uuid.UUID `json:"reply_to_message"`
 }
 

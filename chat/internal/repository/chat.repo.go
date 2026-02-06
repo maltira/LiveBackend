@@ -40,6 +40,7 @@ func (r *chatRepository) GetAllChats(userID uuid.UUID) ([]models.Chat, error) {
 		Joins("JOIN chat_participants ON chat_participants.chat_id = chats.id").
 		Where("chat_participants.user_id = ?", userID).
 		Order("chats.last_message_at DESC").
+		Preload("Participants").
 		Find(&chats).Error
 	if err != nil {
 		return nil, err

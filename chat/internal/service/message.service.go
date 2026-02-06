@@ -4,7 +4,9 @@ import (
 	"chat/internal/models"
 	"chat/internal/models/dto"
 	"chat/internal/repository"
+	"chat/pkg/utils"
 	"errors"
+	"log"
 
 	"github.com/google/uuid"
 )
@@ -67,6 +69,16 @@ func (s *msgService) CreateMessage(chatID uuid.UUID, userID *uuid.UUID, req *dto
 	err := s.repo.SendMessage(msg)
 	if err != nil {
 		return nil, err
+	}
+
+	// публикуем событие
+	participants, _ := s.pRepo.GetAllParticipants(chatID)
+	var pIDs []string
+	for _, p := range participants {
+		pIDs = append(pIDs, p.ID.String())
+	}
+	if err = utils.PublishMessage(chatID, msg, pIDs); err != nil {
+		log.Printf("Failed to publish message event: %v", err)
 	}
 
 	return msg, nil

@@ -69,6 +69,7 @@ func main() {
 	go consumer.StartUserEventsConsumer(userdb.GetDB())
 	go handler.PubSubBlock()
 	go handler.PubSubStatus()
+	go handler.PubSubNewMessage()
 
 	// ? Завершение
 

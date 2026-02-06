@@ -12,6 +12,22 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
+var (
+	cRepo repository.ChatRepository        = repository.NewChatRepository(chatdb.GetDB())
+	mRepo repository.MsgRepository         = repository.NewMsgRepository(chatdb.GetDB())
+	pRepo repository.ParticipantRepository = repository.NewParticipantRepository(chatdb.GetDB())
+)
+var (
+	cService service.ChatService        = service.NewChatService(cRepo)
+	mService service.MsgService         = service.NewMsgService(mRepo, pRepo)
+	pService service.ParticipantService = service.NewParticipantService(pRepo, cRepo)
+)
+var (
+	cHandler *handler.ChatHandler        = handler.NewChatHandler(cService, mService)
+	mHandler *handler.MsgHandler         = handler.NewMsgHandler(mService)
+	pHandler *handler.ParticipantHandler = handler.NewParticipantHandler(pService)
+)
+
 func InitRouter() *gin.Engine {
 	r := gin.Default()
 	api := r.Group("/api/chat")
@@ -27,54 +43,39 @@ func InitRouter() *gin.Engine {
 }
 
 func initChatModule(api *gin.RouterGroup) {
-	repo := repository.NewChatRepository(chatdb.GetDB())
-	sc := service.NewChatService(repo)
-	h := handler.NewChatHandler(sc)
-
 	{
-		api.GET("/:id/check", middleware.ValidateUUID(), h.IsChatExists)
-		api.GET("/all", h.GetAllChats)
+		api.GET("/:id/check", middleware.ValidateUUID(), cHandler.IsChatExists)
+		api.GET("/all", cHandler.GetAllChats)
 
-		api.POST("/create/private", h.CreatePrivateChat)
-		api.POST("/create/group", h.CreateGroupChat)
+		api.POST("/create/private", cHandler.CreatePrivateChat)
+		api.POST("/create/group", cHandler.CreateGroupChat)
 	}
 }
 
 func initParticipantModule(api *gin.RouterGroup) {
-	db := chatdb.GetDB()
-	pRepo := repository.NewParticipantRepository(db)
-	cRepo := repository.NewChatRepository(db)
-	sc := service.NewParticipantService(pRepo, cRepo)
-	h := handler.NewParticipantHandler(sc)
-
 	partApi := api.Group("").Use(middleware.ValidateUUID())
 	{
-		partApi.GET("/:id/user", h.GetParticipant)
-		partApi.GET("/:id/user/check", h.IsParticipant)
+		partApi.GET("/:id/user", pHandler.GetParticipant)
+		partApi.GET("/:id/user/check", pHandler.IsParticipant)
 
-		partApi.POST("/join/:id", h.JoinToChat)
-		partApi.DELETE("/leave/:id", h.LeaveChat)
+		partApi.POST("/join/:id", pHandler.JoinToChat)
+		partApi.DELETE("/leave/:id", pHandler.LeaveChat)
 
-		partApi.DELETE("/:id/kick", h.Kick)
-		partApi.PUT("/:id/mute", h.Mute)
-		partApi.PUT("/:id/unmute", h.Unmute)
+		partApi.DELETE("/:id/kick", pHandler.Kick)
+		partApi.PUT("/:id/mute", pHandler.Mute)
+		partApi.PUT("/:id/unmute", pHandler.Unmute)
 	}
 
 }
 
 func initMessageModule(api *gin.RouterGroup) {
-	repo := repository.NewMsgRepository(chatdb.GetDB())
-	pRepo := repository.NewParticipantRepository(chatdb.GetDB())
-	sc := service.NewMsgService(repo, pRepo)
-	h := handler.NewMsgHandler(sc)
-
 	msgGroup := api.Group("").Use(middleware.ValidateUUID())
 	{
-		msgGroup.GET("/:id/messages", h.GetMessages)
-		msgGroup.GET("/:id/last-message", h.GetLastMessage)
+		msgGroup.GET("/:id/messages", mHandler.GetMessages)
+		msgGroup.GET("/:id/last-message", mHandler.GetLastMessage)
 
-		msgGroup.POST("/:id/send", h.SendMessage)
-		msgGroup.PUT("/message/:id", h.UpdateMessage)
-		msgGroup.DELETE("/message/:id", h.DeleteMessage)
+		msgGroup.POST("/:id/send", mHandler.SendMessage)
+		msgGroup.PUT("/message/:id", mHandler.UpdateMessage)
+		msgGroup.DELETE("/message/:id", mHandler.DeleteMessage)
 	}
 }

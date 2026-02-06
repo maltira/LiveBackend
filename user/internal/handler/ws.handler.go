@@ -36,6 +36,7 @@ func Connect(c *gin.Context, r *repository.ProfileRepository) {
 	client := &websocket.Client{
 		UserID: userID,
 		Conn:   conn,
+		Send:   make(chan []byte, 256), // буфер на 256 сообщений
 	}
 
 	websocket.ClientsMu.Lock()
@@ -44,8 +45,8 @@ func Connect(c *gin.Context, r *repository.ProfileRepository) {
 
 	utils.SetOnline(userID)
 
-	go readPong(client, r)
-	go writePing(client)
+	go readPump(client, r)
+	go writePump(client)
 	log.Printf("User %s connected via WebSocket", userID)
 }
 
@@ -103,10 +104,45 @@ func PubSubStatus() {
 		websocket.ClientsMu.RUnlock()
 	}
 }
+func PubSubNewMessage() {
+	pubsub := redis.UserRedis.Subscribe(context.Background(), "chat:message:events")
+	defer func() {
+		_ = pubsub.Close()
+	}()
 
-// ? Проверка статуса онлайн
+	type MessageEvent struct {
+		EventType    string   `json:"event_type"`
+		ChatID       string   `json:"chat_id"`
+		UserID       string   `json:"user_id"`
+		Content      string   `json:"content"`
+		Type         string   `json:"type"`
+		CreatedAt    string   `json:"created_at"`
+		Participants []string `json:"participants"`
+	}
+	for msg := range pubsub.Channel() {
+		var event MessageEvent
+		if err := json.Unmarshal([]byte(msg.Payload), &event); err != nil {
+			continue
+		}
 
-func readPong(c *websocket.Client, r *repository.ProfileRepository) {
+		for _, pID := range event.Participants {
+			websocket.ClientsMu.RLock()
+			client, exists := websocket.Clients[uuid.MustParse(pID)]
+			if exists && client.Conn != nil {
+				client.Mu.Lock()
+				err := client.Conn.WriteMessage(ws.TextMessage, []byte(msg.Payload))
+				client.Mu.Unlock()
+
+				if err != nil {
+					log.Printf("Failed to send new message to %s: %v", event.UserID, err)
+				}
+			}
+			websocket.ClientsMu.RUnlock()
+		}
+	}
+}
+
+func readPump(c *websocket.Client, r *repository.ProfileRepository) {
 	defer func() {
 		// Удаляем клиента из карты
 		websocket.ClientsMu.Lock()
@@ -139,7 +175,7 @@ func readPong(c *websocket.Client, r *repository.ProfileRepository) {
 		}
 	}
 }
-func writePing(c *websocket.Client) {
+func writePump(c *websocket.Client) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -148,6 +184,7 @@ func writePing(c *websocket.Client) {
 		case <-ticker.C:
 			c.Mu.Lock()
 			if err := c.Conn.WriteControl(ws.PingMessage, []byte("ping"), time.Now().Add(10*time.Second)); err != nil {
+				c.Mu.Unlock()
 				log.Printf("Ping failed for user %s: %v", c.UserID, err)
 				return
 			}

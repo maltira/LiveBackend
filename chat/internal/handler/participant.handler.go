@@ -36,6 +36,24 @@ func (h *ParticipantHandler) GetParticipant(c *gin.Context) {
 	c.JSON(200, p)
 }
 
+func (h *ParticipantHandler) GetAllParticipants(c *gin.Context) {
+	id := c.Param("id")
+	chatID := uuid.MustParse(id)
+	userID := c.MustGet("userID").(uuid.UUID)
+
+	isParticipant := h.sc.IsParticipant(chatID, userID)
+
+	if isParticipant {
+		p, err := h.sc.GetAllParticipants(chatID)
+		if err != nil {
+			c.JSON(500, dto.ErrorResponse{Code: 500, Error: err.Error()})
+			return
+		}
+		c.JSON(200, p)
+	}
+	c.JSON(403, dto.ErrorResponse{Code: 403, Error: "вы не являетесь участником чата"})
+}
+
 func (h *ParticipantHandler) IsParticipant(c *gin.Context) {
 	id := c.Param("id")
 	chatID := uuid.MustParse(id)
