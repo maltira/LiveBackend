@@ -24,6 +24,6 @@ func InitEnv() {
 		PortAuth: os.Getenv("PORT_AUTH"),
 		PortUser: os.Getenv("PORT_USER"),
 		PortChat: os.Getenv("PORT_CHAT"),
-		AppPort:  os.Getenv("PORT_USER"),
+		AppPort:  os.Getenv("PORT_GATEWAY"),
 	}
 }

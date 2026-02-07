@@ -112,6 +112,7 @@ func PubSubNewMessage() {
 
 	type MessageEvent struct {
 		EventType    string   `json:"event_type"`
+		ID           string   `json:"id"`
 		ChatID       string   `json:"chat_id"`
 		UserID       string   `json:"user_id"`
 		Content      string   `json:"content"`

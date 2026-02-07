@@ -13,6 +13,7 @@ const MessageTypeEvent = "new_message"
 
 type MessageEvent struct {
 	EventType    string   `json:"event_type"`
+	ID           string   `json:"id"`
 	ChatID       string   `json:"chat_id"`
 	UserID       string   `json:"user_id"`
 	Content      string   `json:"content"`
@@ -25,6 +26,7 @@ func PublishMessage(chatID uuid.UUID, msg *models.Message, pIDs []string) error 
 	ctx := context.Background()
 	event := MessageEvent{
 		EventType:    MessageTypeEvent,
+		ID:           msg.ID.String(),
 		ChatID:       chatID.String(),
 		Content:      msg.Content,
 		Type:         msg.Type,
