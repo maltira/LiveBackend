@@ -52,7 +52,6 @@ func (r *participantRepository) IsParticipant(chatID, userID uuid.UUID) bool {
 	r.db.Model(&models.Participant{}).
 		Where("chat_id = ? AND user_id = ?", chatID, userID).
 		Count(&count)
-
 	return count > 0
 }
 

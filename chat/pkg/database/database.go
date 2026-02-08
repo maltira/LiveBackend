@@ -2,6 +2,7 @@ package database
 
 import (
 	"chat/config"
+	"chat/internal/models"
 	"fmt"
 	"log"
 
@@ -30,7 +31,7 @@ func InitDB() {
 	}
 
 	// Автомиграция таблиц
-	err = db.AutoMigrate()
+	err = db.AutoMigrate(&models.Chat{}, &models.Message{}, &models.Participant{})
 	if err != nil {
 		panic("failed to migrate database: " + err.Error())
 	}

@@ -111,14 +111,15 @@ func PubSubNewMessage() {
 	}()
 
 	type MessageEvent struct {
-		EventType    string   `json:"event_type"`
-		ID           string   `json:"id"`
-		ChatID       string   `json:"chat_id"`
-		UserID       string   `json:"user_id"`
-		Content      string   `json:"content"`
-		Type         string   `json:"type"`
-		CreatedAt    string   `json:"created_at"`
-		Participants []string `json:"participants"`
+		EventType      string    `json:"event_type"`
+		ID             string    `json:"id"`
+		ChatID         string    `json:"chat_id"`
+		UserID         string    `json:"user_id"`
+		Content        string    `json:"content"`
+		Type           string    `json:"type"`
+		CreatedAt      time.Time `json:"created_at"`
+		ReplyToMessage string    `json:"reply_to_message"`
+		Participants   []string  `json:"participants"`
 	}
 	for msg := range pubsub.Channel() {
 		var event MessageEvent
@@ -133,7 +134,7 @@ func PubSubNewMessage() {
 				client.Mu.Lock()
 				err := client.Conn.WriteMessage(ws.TextMessage, []byte(msg.Payload))
 				client.Mu.Unlock()
-
+				log.Println("Сообщение отправлено пользователю", pID)
 				if err != nil {
 					log.Printf("Failed to send new message to %s: %v", event.UserID, err)
 				}

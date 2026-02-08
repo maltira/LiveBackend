@@ -2,9 +2,11 @@ package utils
 
 import (
 	"chat/internal/models"
+	"chat/pkg/redis"
 	"context"
 	"encoding/json"
-	"user/pkg/redis"
+	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -12,14 +14,15 @@ import (
 const MessageTypeEvent = "new_message"
 
 type MessageEvent struct {
-	EventType    string   `json:"event_type"`
-	ID           string   `json:"id"`
-	ChatID       string   `json:"chat_id"`
-	UserID       string   `json:"user_id"`
-	Content      string   `json:"content"`
-	Type         string   `json:"type"`
-	CreatedAt    string   `json:"created_at"`
-	Participants []string `json:"participants"`
+	EventType      string    `json:"event_type"`
+	ID             string    `json:"id"`
+	ChatID         string    `json:"chat_id"`
+	UserID         string    `json:"user_id"`
+	Content        string    `json:"content"`
+	Type           string    `json:"type"`
+	CreatedAt      time.Time `json:"created_at"`
+	ReplyToMessage string    `json:"reply_to_message"`
+	Participants   []string  `json:"participants"`
 }
 
 func PublishMessage(chatID uuid.UUID, msg *models.Message, pIDs []string) error {
@@ -30,7 +33,7 @@ func PublishMessage(chatID uuid.UUID, msg *models.Message, pIDs []string) error 
 		ChatID:       chatID.String(),
 		Content:      msg.Content,
 		Type:         msg.Type,
-		CreatedAt:    msg.CreatedAt.String(),
+		CreatedAt:    msg.CreatedAt,
 		Participants: pIDs,
 	}
 	if msg.UserID != nil {
@@ -38,11 +41,17 @@ func PublishMessage(chatID uuid.UUID, msg *models.Message, pIDs []string) error 
 	} else {
 		event.UserID = ""
 	}
+	if msg.ReplyToMessage != nil {
+		event.ReplyToMessage = msg.ReplyToMessage.String()
+	} else {
+		event.ReplyToMessage = ""
+	}
 
 	bytes, err := json.Marshal(event)
 	if err != nil {
 		return err
 	}
 
-	return redis.UserRedis.Publish(ctx, "chat:message:events", bytes).Err()
+	fmt.Println("Опубликовано message:", event, "для пользователей", event.Participants)
+	return redis.ChatRedis.Publish(ctx, "chat:message:events", bytes).Err()
 }

@@ -12,37 +12,37 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
-var (
-	cRepo repository.ChatRepository        = repository.NewChatRepository(chatdb.GetDB())
-	mRepo repository.MsgRepository         = repository.NewMsgRepository(chatdb.GetDB())
-	pRepo repository.ParticipantRepository = repository.NewParticipantRepository(chatdb.GetDB())
-)
-var (
-	cService service.ChatService        = service.NewChatService(cRepo)
-	mService service.MsgService         = service.NewMsgService(mRepo, pRepo)
-	pService service.ParticipantService = service.NewParticipantService(pRepo, cRepo)
-)
-var (
-	cHandler *handler.ChatHandler        = handler.NewChatHandler(cService, mService)
-	mHandler *handler.MsgHandler         = handler.NewMsgHandler(mService)
-	pHandler *handler.ParticipantHandler = handler.NewParticipantHandler(pService)
-)
-
 func InitRouter() *gin.Engine {
 	r := gin.Default()
 	api := r.Group("/api/chat")
 	api.Use(middleware.AuthMiddleware())
 
-	initChatModule(api)
-	initParticipantModule(api)
-	initMessageModule(api)
+	var (
+		cRepo repository.ChatRepository        = repository.NewChatRepository(chatdb.GetDB())
+		mRepo repository.MsgRepository         = repository.NewMsgRepository(chatdb.GetDB())
+		pRepo repository.ParticipantRepository = repository.NewParticipantRepository(chatdb.GetDB())
+	)
+	var (
+		cService service.ChatService        = service.NewChatService(cRepo)
+		mService service.MsgService         = service.NewMsgService(mRepo, pRepo)
+		pService service.ParticipantService = service.NewParticipantService(pRepo, cRepo)
+	)
+	var (
+		cHandler *handler.ChatHandler        = handler.NewChatHandler(cService, mService)
+		mHandler *handler.MsgHandler         = handler.NewMsgHandler(mService)
+		pHandler *handler.ParticipantHandler = handler.NewParticipantHandler(pService)
+	)
+
+	initChatModule(api, cHandler)
+	initParticipantModule(api, pHandler)
+	initMessageModule(api, mHandler)
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	return r
 }
 
-func initChatModule(api *gin.RouterGroup) {
+func initChatModule(api *gin.RouterGroup, cHandler *handler.ChatHandler) {
 	{
 		api.GET("/:id/check", middleware.ValidateUUID(), cHandler.IsChatExists)
 		api.GET("/all", cHandler.GetAllChats)
@@ -52,14 +52,15 @@ func initChatModule(api *gin.RouterGroup) {
 	}
 }
 
-func initParticipantModule(api *gin.RouterGroup) {
+func initParticipantModule(api *gin.RouterGroup, pHandler *handler.ParticipantHandler) {
 	partApi := api.Group("").Use(middleware.ValidateUUID())
 	{
 		partApi.GET("/:id/user", pHandler.GetParticipant)
+		partApi.GET("/:id/user/all", pHandler.GetAllParticipants)
 		partApi.GET("/:id/user/check", pHandler.IsParticipant)
 
-		partApi.POST("/join/:id", pHandler.JoinToChat)
-		partApi.DELETE("/leave/:id", pHandler.LeaveChat)
+		partApi.POST("/:id/join", pHandler.JoinToChat)
+		partApi.DELETE("/:id/leave", pHandler.LeaveChat)
 
 		partApi.DELETE("/:id/kick", pHandler.Kick)
 		partApi.PUT("/:id/mute", pHandler.Mute)
@@ -68,7 +69,7 @@ func initParticipantModule(api *gin.RouterGroup) {
 
 }
 
-func initMessageModule(api *gin.RouterGroup) {
+func initMessageModule(api *gin.RouterGroup, mHandler *handler.MsgHandler) {
 	msgGroup := api.Group("").Use(middleware.ValidateUUID())
 	{
 		msgGroup.GET("/:id/messages", mHandler.GetMessages)

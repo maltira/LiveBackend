@@ -30,7 +30,7 @@ func NewMsgService(repo repository.MsgRepository, pRepo repository.ParticipantRe
 }
 
 func (s *msgService) GetMessages(userID, chatID uuid.UUID, limit, offset int) ([]models.Message, int64, error) {
-	isMember := s.pRepo.IsParticipant(userID, chatID)
+	isMember := s.pRepo.IsParticipant(chatID, userID)
 	if !isMember {
 		return nil, 0, errors.New("вы не являетесь участником чата")
 	}
@@ -75,7 +75,7 @@ func (s *msgService) CreateMessage(chatID uuid.UUID, userID *uuid.UUID, req *dto
 	participants, _ := s.pRepo.GetAllParticipants(chatID)
 	var pIDs []string
 	for _, p := range participants {
-		pIDs = append(pIDs, p.ID.String())
+		pIDs = append(pIDs, p.UserID.String())
 	}
 	if err = utils.PublishMessage(chatID, msg, pIDs); err != nil {
 		log.Printf("Failed to publish message event: %v", err)

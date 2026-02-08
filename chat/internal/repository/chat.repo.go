@@ -22,7 +22,7 @@ type chatRepository struct {
 }
 
 func NewChatRepository(db *gorm.DB) ChatRepository {
-	return &chatRepository{db}
+	return &chatRepository{db: db}
 }
 
 func (r *chatRepository) IsChatExists(chatID uuid.UUID) (*models.Chat, error) {
@@ -37,9 +37,8 @@ func (r *chatRepository) IsChatExists(chatID uuid.UUID) (*models.Chat, error) {
 func (r *chatRepository) GetAllChats(userID uuid.UUID) ([]models.Chat, error) {
 	var chats []models.Chat
 	err := r.db.
-		Joins("JOIN chat_participants ON chat_participants.chat_id = chats.id").
-		Where("chat_participants.user_id = ?", userID).
-		Order("chats.last_message_at DESC").
+		Joins("left join participants ON participants.chat_id = chats.id").
+		Where("participants.user_id = ?", userID).
 		Preload("Participants").
 		Find(&chats).Error
 	if err != nil {
@@ -58,41 +57,36 @@ func (r *chatRepository) GetByID(chatID uuid.UUID) (*models.Chat, error) {
 }
 
 func (r *chatRepository) CreatePrivateChat(user1ID, user2ID uuid.UUID) (*models.Chat, error) {
-	// * Ищем существующий чат
 	var existing models.Chat
 	err := r.db.
-		Joins("JOIN chat_participants p1 ON p1.chat_id = chats.id").
-		Joins("JOIN chat_participants p2 ON p2.chat_id = chats.id").
+		Joins("left join participants p1 ON p1.chat_id = chats.id").
+		Joins("left join participants p2 ON p2.chat_id = chats.id").
 		Where("chats.type = ? AND p1.user_id = ? AND p2.user_id = ? AND p1.user_id != p2.user_id", "private", user1ID, user2ID).
 		First(&existing).Error
 	if err == nil {
 		return &existing, nil
 	}
 
-	// * Создаём новый чат
 	chat := &models.Chat{ // новый чат
 		Type:      "private",
 		CreatedBy: user1ID,
 	}
-	err = r.db.Transaction(func(tx *gorm.DB) error {
-		if err = tx.Create(&chat).Error; err != nil {
-			return err
-		}
-
-		participants := []models.Participant{ // добавляем учатсников
-			{ChatID: chat.ID, UserID: user1ID, Role: "member", JoinedAt: time.Now()},
-			{ChatID: chat.ID, UserID: user2ID, Role: "member", JoinedAt: time.Now()},
-		}
-		if err = tx.Create(&participants).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
-	if err != nil {
+	tx := r.db.Begin()
+	if err := tx.Create(&chat).Error; err != nil {
+		tx.Rollback()
 		return nil, err
 	}
 
+	participants := []models.Participant{ // добавляем учатсников
+		{ChatID: chat.ID, UserID: user1ID, Role: "member", JoinedAt: time.Now()},
+		{ChatID: chat.ID, UserID: user2ID, Role: "member", JoinedAt: time.Now()},
+	}
+	if err := tx.Create(&participants).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+
+	tx.Commit()
 	return chat, nil
 }
 
