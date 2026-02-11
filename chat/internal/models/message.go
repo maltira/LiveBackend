@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
 type Message struct {
@@ -13,6 +14,8 @@ type Message struct {
 	Content        string     `json:"content" gorm:"type:text;not null"`
 	Type           string     `json:"type" gorm:"default:'text';check: type IN ('text', 'image', 'video', 'file', 'system');not null"`
 	ReplyToMessage *uuid.UUID `json:"reply_to_message"`
+
+	ReadBy pq.StringArray `json:"read_by" gorm:"type:uuid[]"`
 
 	CreatedAt time.Time  `json:"created_at" gorm:"index:idx_chat_messages;sort:DESC;not null"`
 	EditedAt  *time.Time `json:"edited_at"`

@@ -70,6 +70,7 @@ func main() {
 	go handler.PubSubBlock()
 	go handler.PubSubStatus()
 	go handler.PubSubNewMessage()
+	go handler.PubSubReadAck()
 
 	// ? Завершение
 
@@ -137,10 +138,9 @@ func initSettingsRoutes(api *gin.RouterGroup) {
 }
 
 func initWebSocketRoutes(api *gin.RouterGroup) {
-	r := repository.NewProfileRepository(userdb.GetDB())
 	{
 		api.GET("/ws", middleware.AuthMiddleware(), func(c *gin.Context) {
-			handler.Connect(c, &r)
+			handler.Connect(c)
 		})
 	}
 }

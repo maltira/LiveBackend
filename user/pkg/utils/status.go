@@ -3,7 +3,8 @@ package utils
 import (
 	"log"
 	"time"
-	"user/internal/repository"
+	"user/internal/models"
+	"user/pkg/database"
 
 	"github.com/google/uuid"
 )
@@ -15,13 +16,13 @@ func SetOnline(userID uuid.UUID) {
 	}
 }
 
-func SetOffline(userID uuid.UUID, r *repository.ProfileRepository) {
+func SetOffline(userID uuid.UUID) {
 	t := time.Now()
 	err := PublishStatusEvent(userID, false, t.String())
 	if err != nil {
 		log.Printf("[SetOffline] Failed to publish event for %s: %v", userID, err)
 	}
-	err = (*r).UpdateLastSeen(userID, t)
+	err = database.GetDB().Model(&models.Profile{}).Where("id = ?", userID).Update("last_seen", t).Error
 	if err != nil {
 		log.Printf("[SetOffline] Failed to change last_seen for %s: %v", userID, err)
 	}

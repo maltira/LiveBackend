@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 	"time"
-	"user/internal/repository"
+	"user/pkg/rabbitmq"
 	"user/pkg/redis"
 	"user/pkg/utils"
 	"user/pkg/websocket"
@@ -24,7 +24,30 @@ var upgrader = ws.Upgrader{
 	},
 }
 
-func Connect(c *gin.Context, r *repository.ProfileRepository) {
+type Message struct {
+	ID             uuid.UUID  `json:"id"`
+	ChatID         uuid.UUID  `json:"chat_id"`
+	UserID         *uuid.UUID `json:"user_id"` // null = система
+	Content        string     `json:"content"`
+	Type           string     `json:"type"`
+	ReplyToMessage *uuid.UUID `json:"reply_to_message"`
+
+	ReadBy []uuid.UUID `gorm:"type:uuid[]"`
+
+	CreatedAt time.Time  `json:"created_at"`
+	EditedAt  *time.Time `json:"edited_at"`
+}
+type Participant struct {
+	ID     uuid.UUID `json:"id"`
+	ChatID uuid.UUID `json:"chat_id"`
+	UserID uuid.UUID `json:"user_id"`
+	Role   string    `json:"role"`
+
+	JoinedAt   time.Time  `json:"joined_at"`
+	MutedUntil *time.Time `json:"muted_until"` // для групп
+}
+
+func Connect(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -45,7 +68,7 @@ func Connect(c *gin.Context, r *repository.ProfileRepository) {
 
 	utils.SetOnline(userID)
 
-	go readPump(client, r)
+	go readPump(client)
 	go writePump(client)
 	log.Printf("User %s connected via WebSocket", userID)
 }
@@ -143,15 +166,63 @@ func PubSubNewMessage() {
 		}
 	}
 }
+func PubSubReadAck() {
+	pubsub := redis.UserRedis.Subscribe(context.Background(), "chat:read_ack:events")
+	defer func() {
+		_ = pubsub.Close()
+	}()
 
-func readPump(c *websocket.Client, r *repository.ProfileRepository) {
+	for msg := range pubsub.Channel() {
+		var event struct {
+			Event        string   `json:"event"`
+			ChatID       string   `json:"chat_id"`
+			UserID       string   `json:"user_id"`
+			Participants []string `json:"participants"`
+			MessageIDs   []string `json:"message_ids"`
+		}
+		if err := json.Unmarshal([]byte(msg.Payload), &event); err != nil {
+			log.Printf("Invalid read_ack event: %v", err)
+			continue
+		}
+
+		// Рассылаем пользователям
+		broadcast, _ := json.Marshal(map[string]interface{}{
+			"event_type":  "read_update",
+			"chat_id":     event.ChatID,
+			"user_id":     event.UserID,
+			"message_ids": event.MessageIDs,
+		})
+		for _, p := range event.Participants {
+			if p == event.UserID {
+				continue
+			}
+			clientID, err := uuid.Parse(p)
+			if err != nil {
+				continue
+			}
+			websocket.ClientsMu.RLock()
+			client, exists := websocket.Clients[clientID]
+			if exists && client.Conn != nil {
+				client.Mu.Lock()
+				err = client.Conn.WriteMessage(ws.TextMessage, broadcast)
+				client.Mu.Unlock()
+				if err != nil {
+					log.Printf("Failed to send read_update %s: %v", p, err)
+				}
+			}
+			websocket.ClientsMu.RUnlock()
+		}
+	}
+}
+
+func readPump(c *websocket.Client) {
 	defer func() {
 		// Удаляем клиента из карты
 		websocket.ClientsMu.Lock()
 		delete(websocket.Clients, c.UserID)
 		websocket.ClientsMu.Unlock()
 
-		utils.SetOffline(c.UserID, r)
+		utils.SetOffline(c.UserID)
 
 		_ = c.Conn.Close()
 		log.Printf("User %s disconnected", c.UserID)
@@ -168,12 +239,51 @@ func readPump(c *websocket.Client, r *repository.ProfileRepository) {
 	c.Conn.SetReadLimit(512)
 
 	for {
-		_, _, err := c.Conn.ReadMessage()
+		_, msg, err := c.Conn.ReadMessage()
 		if err != nil { // клиент отвалился
 			if ws.IsUnexpectedCloseError(err, ws.CloseGoingAway, ws.CloseAbnormalClosure) {
 				log.Printf("Unexpected WS close for user %s: %v", c.UserID, err)
 			}
 			break
+		}
+
+		// Парсим входящее сообщение
+		var incoming struct {
+			Type string `json:"type"` // message, typing, read, pong и т.д.
+		}
+		if err = json.Unmarshal(msg, &incoming); err != nil {
+			log.Printf("Invalid JSON from %s: %v", c.UserID, err)
+			continue
+		}
+
+		switch incoming.Type {
+		case "read":
+			var readEvent struct {
+				ChatID     string   `json:"chat_id"`
+				MessageIDs []string `json:"message_ids"`
+			}
+			if err = json.Unmarshal(msg, &readEvent); err != nil {
+				continue
+			}
+
+			chatID, err := uuid.Parse(readEvent.ChatID)
+			if err != nil {
+				continue
+			}
+
+			// Публикуем событие, чтобы обновить read_by
+			event := map[string]interface{}{
+				"event":       "read_update",
+				"user_id":     c.UserID.String(),
+				"chat_id":     chatID.String(),
+				"message_ids": readEvent.MessageIDs,
+			}
+			payload, _ := json.Marshal(event)
+			err = rabbitmq.Publish("chat.events", payload)
+
+			if err != nil {
+				log.Printf("Failed to publish read_update event: %v", err)
+			}
 		}
 	}
 }

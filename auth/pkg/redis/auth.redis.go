@@ -3,7 +3,6 @@ package redis
 import (
 	"auth/config"
 	"context"
-	"fmt"
 	"log"
 	"time"
 
@@ -18,8 +17,6 @@ func InitAuthRedis() *redis.Client {
 		Password: "",
 		DB:       0,
 	})
-
-	fmt.Println("REDIS ADDR:", config.Env.RedisAddr)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := AuthRedis.Ping(ctx).Err(); err != nil {

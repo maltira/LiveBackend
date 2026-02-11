@@ -2,8 +2,10 @@ package main
 
 import (
 	"chat/config"
+	"chat/internal/consumer"
 	"chat/internal/router"
 	chatdb "chat/pkg/database"
+	"chat/pkg/rabbitmq"
 	"chat/pkg/redis"
 	"context"
 	"errors"
@@ -20,6 +22,7 @@ func main() {
 	config.InitEnv()
 	redis.InitChatRedis()
 	chatdb.InitDB()
+	rabbitmq.InitRabbitMQ()
 	r := router.InitRouter()
 
 	// ? Запуск процессов и сервера
@@ -36,6 +39,8 @@ func main() {
 			panic(err)
 		}
 	}()
+
+	go consumer.StartChatEventsConsumer()
 
 	// ? Завершение
 
@@ -54,4 +59,5 @@ func main() {
 	}
 	chatdb.CloseDB()
 	redis.Close()
+	rabbitmq.Close()
 }
