@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"encoding/json"
+	"time"
 	"user/pkg/redis"
 
 	"github.com/google/uuid"
@@ -20,10 +21,10 @@ type BlockEvent struct {
 	IsBlocked bool   `json:"is_blocked"`
 }
 type StatusEvent struct {
-	EventType string `json:"event_type"`
-	UserID    string `json:"user_id"`
-	IsOnline  bool   `json:"is_online"`
-	LastSeen  string `json:"last_seen"`
+	EventType string    `json:"event_type"`
+	UserID    string    `json:"user_id"`
+	IsOnline  bool      `json:"is_online"`
+	LastSeen  time.Time `json:"last_seen"`
 }
 
 func PublishBlockEvent(blockerID, blockedID uuid.UUID, isBlocked bool) error {
@@ -42,7 +43,7 @@ func PublishBlockEvent(blockerID, blockedID uuid.UUID, isBlocked bool) error {
 	return redis.UserRedis.Publish(ctx, "user:block:events", bytes).Err()
 }
 
-func PublishStatusEvent(userID uuid.UUID, online bool, lastSeen string) error {
+func PublishStatusEvent(userID uuid.UUID, online bool, lastSeen time.Time) error {
 	ctx := context.Background()
 	event := StatusEvent{
 		EventType: StatusEventType,

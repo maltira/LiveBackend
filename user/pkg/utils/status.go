@@ -10,7 +10,7 @@ import (
 )
 
 func SetOnline(userID uuid.UUID) {
-	err := PublishStatusEvent(userID, true, "")
+	err := PublishStatusEvent(userID, true, time.Now())
 	if err != nil {
 		log.Printf("[SetOnline] Failed to publish online event for %s: %v", userID, err)
 	}
@@ -18,7 +18,7 @@ func SetOnline(userID uuid.UUID) {
 
 func SetOffline(userID uuid.UUID) {
 	t := time.Now()
-	err := PublishStatusEvent(userID, false, t.String())
+	err := PublishStatusEvent(userID, false, t)
 	if err != nil {
 		log.Printf("[SetOffline] Failed to publish event for %s: %v", userID, err)
 	}
