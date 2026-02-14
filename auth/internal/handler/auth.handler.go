@@ -175,8 +175,7 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		}
 
 		access, refresh, _ := h.sc.GenerateTokens(req.UserID, ip, userAgent, device)
-		c.SetCookie("access_token", access, 15*60, "/", "", false, true)
-		c.SetCookie("refresh_token", refresh, 30*24*60*60, "/", "", false, true)
+		utils.SetAuthCookies(c, access, refresh)
 
 		// сообщаем, что пользователь создан
 		payload := map[string]interface{}{
@@ -223,8 +222,7 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	c.SetCookie("access_token", access, 15*60, "/", "", false, true)
-	c.SetCookie("refresh_token", refresh, 30*24*60*60, "/", "", false, true)
+	utils.SetAuthCookies(c, access, refresh)
 
 	c.JSON(http.StatusOK, dto.MessageResponse{
 		Message: "Refresh successful",
@@ -284,8 +282,7 @@ func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
 		err = h.sc.BlacklistAccessToken(c, accessToken)
 	}
 
-	c.SetCookie("access_token", "", -1, "/", "", false, true)
-	c.SetCookie("refresh_token", "", -1, "/", "", false, true)
+	utils.ClearAuthCookies(c)
 
 	c.JSON(http.StatusOK, dto.MessageResponse{Message: "Logged out from current device successfully"})
 }
@@ -314,8 +311,7 @@ func (h *AuthHandler) LogoutAll(c *gin.Context) {
 		_ = h.sc.BlacklistAccessToken(c, accessToken)
 	}
 
-	c.SetCookie("access_token", "", -1, "/", "", false, true)
-	c.SetCookie("refresh_token", "", -1, "/", "", false, true)
+	utils.ClearAuthCookies(c)
 
 	c.JSON(http.StatusOK, dto.MessageResponse{Message: "Logged out successfully"})
 }
@@ -330,6 +326,7 @@ func (h *AuthHandler) LogoutAll(c *gin.Context) {
 // @Produce      json
 // @Success      200  {object} dto.OTPSentResponse "Подтвердите сброс пароля"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
+// @Failure      404  {object} dto.ErrorResponse "Аккаунт не найден"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/forgot-password [post]
 func (h *AuthHandler) ForgotPassword(c *gin.Context) {
@@ -342,7 +339,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	user, err := h.sc.GetUserByEmail(email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusOK, dto.ErrorResponse{Code: 404, Error: "Аккаунта с такими данными не существует"})
+			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: "Аккаунта с такими данными не существует"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
@@ -399,9 +396,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	if accessToken != "" {
 		_ = h.sc.BlacklistAccessToken(c, accessToken)
 	}
-	c.SetCookie("access_token", "", -1, "/", "", false, true)
-	c.SetCookie("refresh_token", "", -1, "/", "", false, true)
-
+	utils.ClearAuthCookies(c)
 	c.JSON(http.StatusOK, dto.MessageResponse{Message: "Password reset successful"})
 }
 
@@ -543,8 +538,7 @@ func (h *AuthHandler) DeleteConfirm(c *gin.Context) {
 	if accessToken != "" {
 		_ = h.sc.BlacklistAccessToken(c, accessToken)
 	}
-	c.SetCookie("access_token", "", -1, "/", "", false, true)
-	c.SetCookie("refresh_token", "", -1, "/", "", false, true)
+	utils.ClearAuthCookies(c)
 
 	c.JSON(http.StatusOK, dto.MessageResponse{
 		Message: "Аккаунт будет удалён через 3 дня. Вы можете восстановить доступ в любое время до истечения этого срока.",
