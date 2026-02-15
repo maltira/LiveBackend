@@ -17,64 +17,66 @@ func InitRouter() *gin.Engine {
 	api := r.Group("/api/chat")
 	api.Use(middleware.AuthMiddleware())
 
-	initChatModule(api)
-	initParticipantModule(api)
-	initMessageModule(api)
+	var (
+		cRepo repository.ChatRepository        = repository.NewChatRepository(chatdb.GetDB())
+		mRepo repository.MsgRepository         = repository.NewMsgRepository(chatdb.GetDB())
+		pRepo repository.ParticipantRepository = repository.NewParticipantRepository(chatdb.GetDB())
+	)
+	var (
+		cService service.ChatService        = service.NewChatService(cRepo)
+		mService service.MsgService         = service.NewMsgService(mRepo, pRepo)
+		pService service.ParticipantService = service.NewParticipantService(pRepo, cRepo)
+	)
+	var (
+		cHandler *handler.ChatHandler        = handler.NewChatHandler(cService, mService)
+		mHandler *handler.MsgHandler         = handler.NewMsgHandler(mService)
+		pHandler *handler.ParticipantHandler = handler.NewParticipantHandler(pService)
+	)
+
+	initChatModule(api, cHandler)
+	initParticipantModule(api, pHandler)
+	initMessageModule(api, mHandler)
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	return r
 }
 
-func initChatModule(api *gin.RouterGroup) {
-	repo := repository.NewChatRepository(chatdb.GetDB())
-	sc := service.NewChatService(repo)
-	h := handler.NewChatHandler(sc)
-
+func initChatModule(api *gin.RouterGroup, cHandler *handler.ChatHandler) {
 	{
-		api.GET("/:id/check", middleware.ValidateUUID(), h.IsChatExists)
-		api.GET("/all", h.GetAllChats)
+		api.GET("/:id/check", middleware.ValidateUUID(), cHandler.IsChatExists)
+		api.GET("/all", cHandler.GetAllChats)
 
-		api.POST("/create/private", h.CreatePrivateChat)
-		api.POST("/create/group", h.CreateGroupChat)
+		api.POST("/create/private", cHandler.CreatePrivateChat)
+		api.POST("/create/group", cHandler.CreateGroupChat)
 	}
 }
 
-func initParticipantModule(api *gin.RouterGroup) {
-	db := chatdb.GetDB()
-	pRepo := repository.NewParticipantRepository(db)
-	cRepo := repository.NewChatRepository(db)
-	sc := service.NewParticipantService(pRepo, cRepo)
-	h := handler.NewParticipantHandler(sc)
-
+func initParticipantModule(api *gin.RouterGroup, pHandler *handler.ParticipantHandler) {
 	partApi := api.Group("").Use(middleware.ValidateUUID())
 	{
-		partApi.GET("/:id/user", h.GetParticipant)
-		partApi.GET("/:id/user/check", h.IsParticipant)
+		partApi.GET("/:id/user", pHandler.GetParticipant)
+		partApi.GET("/:id/user/all", pHandler.GetAllParticipants)
+		partApi.GET("/:id/user/check", pHandler.IsParticipant)
 
-		partApi.POST("/join/:id", h.JoinToChat)
-		partApi.DELETE("/leave/:id", h.LeaveChat)
+		partApi.POST("/:id/join", pHandler.JoinToChat)
+		partApi.DELETE("/:id/leave", pHandler.LeaveChat)
 
-		partApi.DELETE("/:id/kick", h.Kick)
-		partApi.PUT("/:id/mute", h.Mute)
-		partApi.PUT("/:id/unmute", h.Unmute)
+		partApi.DELETE("/:id/kick", pHandler.Kick)
+		partApi.PUT("/:id/mute", pHandler.Mute)
+		partApi.PUT("/:id/unmute", pHandler.Unmute)
 	}
 
 }
 
-func initMessageModule(api *gin.RouterGroup) {
-	repo := repository.NewMsgRepository(chatdb.GetDB())
-	pRepo := repository.NewParticipantRepository(chatdb.GetDB())
-	sc := service.NewMsgService(repo, pRepo)
-	h := handler.NewMsgHandler(sc)
-
+func initMessageModule(api *gin.RouterGroup, mHandler *handler.MsgHandler) {
 	msgGroup := api.Group("").Use(middleware.ValidateUUID())
 	{
-		msgGroup.GET("/:id/messages", h.GetMessages)
-		msgGroup.GET("/:id/last-message", h.GetLastMessage)
+		msgGroup.GET("/:id/messages", mHandler.GetMessages)
+		msgGroup.GET("/:id/last-message", mHandler.GetLastMessage)
 
-		msgGroup.POST("/:id/send", h.SendMessage)
-		msgGroup.PUT("/message/:id", h.UpdateMessage)
-		msgGroup.DELETE("/message/:id", h.DeleteMessage)
+		msgGroup.POST("/:id/send", mHandler.SendMessage)
+		msgGroup.PUT("/message/:id", mHandler.UpdateMessage)
+		msgGroup.DELETE("/message/:id", mHandler.DeleteMessage)
 	}
 }

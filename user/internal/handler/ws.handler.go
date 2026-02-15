@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 	"time"
-	"user/internal/repository"
+	"user/pkg/rabbitmq"
 	"user/pkg/redis"
 	"user/pkg/utils"
 	"user/pkg/websocket"
@@ -24,7 +24,30 @@ var upgrader = ws.Upgrader{
 	},
 }
 
-func Connect(c *gin.Context, r *repository.ProfileRepository) {
+type Message struct {
+	ID             uuid.UUID  `json:"id"`
+	ChatID         uuid.UUID  `json:"chat_id"`
+	UserID         *uuid.UUID `json:"user_id"` // null = система
+	Content        string     `json:"content"`
+	Type           string     `json:"type"`
+	ReplyToMessage *uuid.UUID `json:"reply_to_message"`
+
+	ReadBy []uuid.UUID `gorm:"type:uuid[]"`
+
+	CreatedAt time.Time  `json:"created_at"`
+	EditedAt  *time.Time `json:"edited_at"`
+}
+type Participant struct {
+	ID     uuid.UUID `json:"id"`
+	ChatID uuid.UUID `json:"chat_id"`
+	UserID uuid.UUID `json:"user_id"`
+	Role   string    `json:"role"`
+
+	JoinedAt   time.Time  `json:"joined_at"`
+	MutedUntil *time.Time `json:"muted_until"` // для групп
+}
+
+func Connect(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
@@ -36,6 +59,7 @@ func Connect(c *gin.Context, r *repository.ProfileRepository) {
 	client := &websocket.Client{
 		UserID: userID,
 		Conn:   conn,
+		Send:   make(chan []byte, 256), // буфер на 256 сообщений
 	}
 
 	websocket.ClientsMu.Lock()
@@ -44,8 +68,8 @@ func Connect(c *gin.Context, r *repository.ProfileRepository) {
 
 	utils.SetOnline(userID)
 
-	go readPong(client, r)
-	go writePing(client)
+	go readPump(client)
+	go writePump(client)
 	log.Printf("User %s connected via WebSocket", userID)
 }
 
@@ -103,17 +127,102 @@ func PubSubStatus() {
 		websocket.ClientsMu.RUnlock()
 	}
 }
+func PubSubNewMessage() {
+	pubsub := redis.UserRedis.Subscribe(context.Background(), "chat:message:events")
+	defer func() {
+		_ = pubsub.Close()
+	}()
 
-// ? Проверка статуса онлайн
+	type MessageEvent struct {
+		EventType      string    `json:"event_type"`
+		ID             string    `json:"id"`
+		ChatID         string    `json:"chat_id"`
+		UserID         string    `json:"user_id"`
+		Content        string    `json:"content"`
+		Type           string    `json:"type"`
+		CreatedAt      time.Time `json:"created_at"`
+		ReplyToMessage string    `json:"reply_to_message"`
+		Participants   []string  `json:"participants"`
+	}
+	for msg := range pubsub.Channel() {
+		var event MessageEvent
+		if err := json.Unmarshal([]byte(msg.Payload), &event); err != nil {
+			continue
+		}
 
-func readPong(c *websocket.Client, r *repository.ProfileRepository) {
+		for _, pID := range event.Participants {
+			websocket.ClientsMu.RLock()
+			client, exists := websocket.Clients[uuid.MustParse(pID)]
+			if exists && client.Conn != nil {
+				client.Mu.Lock()
+				err := client.Conn.WriteMessage(ws.TextMessage, []byte(msg.Payload))
+				client.Mu.Unlock()
+				log.Println("Сообщение отправлено пользователю", pID)
+				if err != nil {
+					log.Printf("Failed to send new message to %s: %v", event.UserID, err)
+				}
+			}
+			websocket.ClientsMu.RUnlock()
+		}
+	}
+}
+func PubSubReadAck() {
+	pubsub := redis.UserRedis.Subscribe(context.Background(), "chat:read_ack:events")
+	defer func() {
+		_ = pubsub.Close()
+	}()
+
+	for msg := range pubsub.Channel() {
+		var event struct {
+			Event        string   `json:"event"`
+			ChatID       string   `json:"chat_id"`
+			UserID       string   `json:"user_id"`
+			Participants []string `json:"participants"`
+			MessageIDs   []string `json:"message_ids"`
+		}
+		if err := json.Unmarshal([]byte(msg.Payload), &event); err != nil {
+			log.Printf("Invalid read_ack event: %v", err)
+			continue
+		}
+
+		// Рассылаем пользователям
+		broadcast, _ := json.Marshal(map[string]interface{}{
+			"event_type":  "read_update",
+			"chat_id":     event.ChatID,
+			"user_id":     event.UserID,
+			"message_ids": event.MessageIDs,
+		})
+		for _, p := range event.Participants {
+			if p == event.UserID {
+				continue
+			}
+			clientID, err := uuid.Parse(p)
+			if err != nil {
+				continue
+			}
+			websocket.ClientsMu.RLock()
+			client, exists := websocket.Clients[clientID]
+			if exists && client.Conn != nil {
+				client.Mu.Lock()
+				err = client.Conn.WriteMessage(ws.TextMessage, broadcast)
+				client.Mu.Unlock()
+				if err != nil {
+					log.Printf("Failed to send read_update %s: %v", p, err)
+				}
+			}
+			websocket.ClientsMu.RUnlock()
+		}
+	}
+}
+
+func readPump(c *websocket.Client) {
 	defer func() {
 		// Удаляем клиента из карты
 		websocket.ClientsMu.Lock()
 		delete(websocket.Clients, c.UserID)
 		websocket.ClientsMu.Unlock()
 
-		utils.SetOffline(c.UserID, r)
+		utils.SetOffline(c.UserID)
 
 		_ = c.Conn.Close()
 		log.Printf("User %s disconnected", c.UserID)
@@ -130,16 +239,55 @@ func readPong(c *websocket.Client, r *repository.ProfileRepository) {
 	c.Conn.SetReadLimit(512)
 
 	for {
-		_, _, err := c.Conn.ReadMessage()
+		_, msg, err := c.Conn.ReadMessage()
 		if err != nil { // клиент отвалился
 			if ws.IsUnexpectedCloseError(err, ws.CloseGoingAway, ws.CloseAbnormalClosure) {
 				log.Printf("Unexpected WS close for user %s: %v", c.UserID, err)
 			}
 			break
 		}
+
+		// Парсим входящее сообщение
+		var incoming struct {
+			Type string `json:"type"` // message, typing, read, pong и т.д.
+		}
+		if err = json.Unmarshal(msg, &incoming); err != nil {
+			log.Printf("Invalid JSON from %s: %v", c.UserID, err)
+			continue
+		}
+
+		switch incoming.Type {
+		case "read":
+			var readEvent struct {
+				ChatID     string   `json:"chat_id"`
+				MessageIDs []string `json:"message_ids"`
+			}
+			if err = json.Unmarshal(msg, &readEvent); err != nil {
+				continue
+			}
+
+			chatID, err := uuid.Parse(readEvent.ChatID)
+			if err != nil {
+				continue
+			}
+
+			// Публикуем событие, чтобы обновить read_by
+			event := map[string]interface{}{
+				"event":       "read_update",
+				"user_id":     c.UserID.String(),
+				"chat_id":     chatID.String(),
+				"message_ids": readEvent.MessageIDs,
+			}
+			payload, _ := json.Marshal(event)
+			err = rabbitmq.Publish("chat.events", payload)
+
+			if err != nil {
+				log.Printf("Failed to publish read_update event: %v", err)
+			}
+		}
 	}
 }
-func writePing(c *websocket.Client) {
+func writePump(c *websocket.Client) {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -148,6 +296,7 @@ func writePing(c *websocket.Client) {
 		case <-ticker.C:
 			c.Mu.Lock()
 			if err := c.Conn.WriteControl(ws.PingMessage, []byte("ping"), time.Now().Add(10*time.Second)); err != nil {
+				c.Mu.Unlock()
 				log.Printf("Ping failed for user %s: %v", c.UserID, err)
 				return
 			}

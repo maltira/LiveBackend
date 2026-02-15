@@ -67,9 +67,13 @@ func (r *msgRepository) EditMessage(msg *models.Message) error {
 	}
 
 	updates := map[string]interface{}{
-		"content":          msg.Content,
-		"reply_to_message": *msg.ReplyToMessage,
-		"edited_at":        time.Now(),
+		"content":   msg.Content,
+		"edited_at": time.Now(),
+	}
+	if msg.ReplyToMessage != nil {
+		updates["reply_to_message"] = msg.ReplyToMessage
+	} else {
+		updates["reply_to_message"] = nil
 	}
 
 	return r.db.

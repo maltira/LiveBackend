@@ -1,10 +1,9 @@
 package rabbitmq
 
 import (
-	"context"
+	"chat/config"
 	"fmt"
 	"log"
-	"user/config"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -25,32 +24,6 @@ func InitRabbitMQ() {
 	if err != nil {
 		panic(fmt.Sprintf("Failed to open channel: %v", err))
 	}
-}
-
-func Publish(event string, payload []byte) error {
-	q, err := ch.QueueDeclare(
-		event, // имя очереди
-		true,  // durable
-		false, // auto-delete
-		false, // exclusive
-		false, // no-wait
-		nil,
-	)
-	if err != nil {
-		return err
-	}
-
-	return ch.PublishWithContext(
-		context.Background(),
-		"",     // exchange
-		q.Name, // routing key
-		false,
-		false,
-		amqp.Publishing{
-			ContentType: "application/json",
-			Body:        payload,
-		},
-	)
 }
 
 func Consume(event string, handler func([]byte)) error {

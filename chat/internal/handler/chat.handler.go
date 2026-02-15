@@ -9,11 +9,12 @@ import (
 )
 
 type ChatHandler struct {
-	sc service.ChatService
+	sc    service.ChatService
+	msgSc service.MsgService
 }
 
-func NewChatHandler(sc service.ChatService) *ChatHandler {
-	return &ChatHandler{sc: sc}
+func NewChatHandler(sc service.ChatService, msgSc service.MsgService) *ChatHandler {
+	return &ChatHandler{sc: sc, msgSc: msgSc}
 }
 
 func (h *ChatHandler) IsChatExists(c *gin.Context) {
@@ -30,7 +31,7 @@ func (h *ChatHandler) IsChatExists(c *gin.Context) {
 }
 
 func (h *ChatHandler) GetAllChats(c *gin.Context) {
-	userID := c.MustGet("UserID").(uuid.UUID)
+	userID := c.MustGet("userID").(uuid.UUID)
 
 	chats, err := h.sc.GetAllChats(userID)
 	if err != nil {
@@ -42,15 +43,10 @@ func (h *ChatHandler) GetAllChats(c *gin.Context) {
 }
 
 func (h *ChatHandler) CreatePrivateChat(c *gin.Context) {
-	fID := c.Query("fid")
-	sID := c.Query("sid")
+	uID := c.Query("uid")
 
-	user1ID, err := uuid.Parse(fID)
-	if err != nil {
-		c.JSON(500, dto.ErrorResponse{Code: 500, Error: "Неверный формат для fID (uuid)"})
-		return
-	}
-	user2ID, err := uuid.Parse(sID)
+	user1ID := c.MustGet("userID").(uuid.UUID)
+	user2ID, err := uuid.Parse(uID)
 	if err != nil {
 		c.JSON(500, dto.ErrorResponse{Code: 500, Error: "Неверный формат для sID (uuid)"})
 		return
@@ -77,6 +73,12 @@ func (h *ChatHandler) CreateGroupChat(c *gin.Context) {
 		c.JSON(500, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
+
+	_, _ = h.msgSc.CreateMessage(chat.ID, nil, &dto.MsgCreateRequest{
+		Content:        "Группа создана",
+		Type:           "system",
+		ReplyToMessage: nil,
+	})
 
 	c.JSON(200, chat)
 }

@@ -10,6 +10,7 @@ import (
 
 type ParticipantRepository interface {
 	GetParticipantByID(chatID, userID uuid.UUID) (*models.Participant, error)
+	GetAllParticipants(chatID uuid.UUID) ([]models.Participant, error)
 	IsParticipant(chatID, userID uuid.UUID) bool
 
 	JoinToChat(chatID, userID uuid.UUID) error
@@ -37,12 +38,20 @@ func (r *participantRepository) GetParticipantByID(chatID, userID uuid.UUID) (*m
 	return participant, nil
 }
 
+func (r *participantRepository) GetAllParticipants(chatID uuid.UUID) ([]models.Participant, error) {
+	var participants []models.Participant
+	err := r.db.Where("chat_id = ?", chatID).Find(&participants).Error
+	if err != nil {
+		return nil, err
+	}
+	return participants, nil
+}
+
 func (r *participantRepository) IsParticipant(chatID, userID uuid.UUID) bool {
 	var count int64
 	r.db.Model(&models.Participant{}).
 		Where("chat_id = ? AND user_id = ?", chatID, userID).
 		Count(&count)
-
 	return count > 0
 }
 

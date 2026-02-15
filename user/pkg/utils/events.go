@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"encoding/json"
+	"time"
 	"user/pkg/redis"
 
 	"github.com/google/uuid"
@@ -14,22 +15,22 @@ const (
 )
 
 type BlockEvent struct {
-	Type      string `json:"type"`
+	EventType string `json:"event_type"`
 	BlockerID string `json:"blocker_id"`
 	BlockedID string `json:"blocked_id"`
 	IsBlocked bool   `json:"is_blocked"`
 }
 type StatusEvent struct {
-	Type     string `json:"type"`
-	UserID   string `json:"user_id"`
-	IsOnline bool   `json:"is_online"`
-	LastSeen string `json:"last_seen"`
+	EventType string    `json:"event_type"`
+	UserID    string    `json:"user_id"`
+	IsOnline  bool      `json:"is_online"`
+	LastSeen  time.Time `json:"last_seen"`
 }
 
 func PublishBlockEvent(blockerID, blockedID uuid.UUID, isBlocked bool) error {
 	ctx := context.Background()
 	payload := BlockEvent{
-		Type:      BlockEventType,
+		EventType: BlockEventType,
 		BlockerID: blockerID.String(),
 		BlockedID: blockedID.String(),
 		IsBlocked: isBlocked,
@@ -42,13 +43,13 @@ func PublishBlockEvent(blockerID, blockedID uuid.UUID, isBlocked bool) error {
 	return redis.UserRedis.Publish(ctx, "user:block:events", bytes).Err()
 }
 
-func PublishStatusEvent(userID uuid.UUID, online bool, lastSeen string) error {
+func PublishStatusEvent(userID uuid.UUID, online bool, lastSeen time.Time) error {
 	ctx := context.Background()
 	event := StatusEvent{
-		Type:     StatusEventType,
-		UserID:   userID.String(),
-		IsOnline: online,
-		LastSeen: lastSeen,
+		EventType: StatusEventType,
+		UserID:    userID.String(),
+		IsOnline:  online,
+		LastSeen:  lastSeen,
 	}
 	// log.Printf("Опубликовано событие %s (online: %t, last_seen: %s)", userID, online, lastSeen)
 	bytes, err := json.Marshal(event)

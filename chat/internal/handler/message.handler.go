@@ -26,7 +26,7 @@ func (h *MsgHandler) GetMessages(c *gin.Context) {
 
 	limit := 50
 	offset := 0
-	if l := c.Query("offset"); l != "" {
+	if l := c.Query("limit"); l != "" {
 		limit, _ = strconv.Atoi(l)
 	}
 	if o := c.Query("offset"); o != "" {

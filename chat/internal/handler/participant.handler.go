@@ -36,6 +36,25 @@ func (h *ParticipantHandler) GetParticipant(c *gin.Context) {
 	c.JSON(200, p)
 }
 
+func (h *ParticipantHandler) GetAllParticipants(c *gin.Context) {
+	id := c.Param("id")
+	chatID := uuid.MustParse(id)
+	userID := c.MustGet("userID").(uuid.UUID)
+
+	isParticipant := h.sc.IsParticipant(chatID, userID)
+
+	if isParticipant {
+		p, err := h.sc.GetAllParticipants(chatID)
+		if err != nil {
+			c.JSON(500, dto.ErrorResponse{Code: 500, Error: err.Error()})
+			return
+		}
+		c.JSON(200, p)
+		return
+	}
+	c.JSON(403, dto.ErrorResponse{Code: 403, Error: "вы не являетесь участником чата"})
+}
+
 func (h *ParticipantHandler) IsParticipant(c *gin.Context) {
 	id := c.Param("id")
 	chatID := uuid.MustParse(id)
@@ -61,7 +80,7 @@ func (h *ParticipantHandler) JoinToChat(c *gin.Context) {
 		return
 	}
 
-	c.JSON(200, dto.MessageResponse{Message: "Вы вступили в чат " + string(id)})
+	c.JSON(200, true)
 }
 
 func (h *ParticipantHandler) LeaveChat(c *gin.Context) {
@@ -81,7 +100,7 @@ func (h *ParticipantHandler) Kick(c *gin.Context) {
 	id := c.Param("id")
 	chatID := uuid.MustParse(id)
 	userID := c.MustGet("userID").(uuid.UUID)
-	kID := c.Query("cid")
+	kID := c.Query("uid")
 	kickedID, err := uuid.Parse(kID)
 	if err != nil {
 		c.JSON(400, dto.ErrorResponse{Code: 400, Error: err.Error()})
@@ -120,8 +139,8 @@ func (h *ParticipantHandler) Unmute(c *gin.Context) {
 	id := c.Param("id")
 	chatID := uuid.MustParse(id)
 	userID := c.MustGet("userID").(uuid.UUID)
-	mID := c.Query("mid")
-	mutedID, err := uuid.Parse(mID)
+	uID := c.Query("uid")
+	mutedID, err := uuid.Parse(uID)
 	if err != nil {
 		c.JSON(400, dto.ErrorResponse{Code: 400, Error: err.Error()})
 		return

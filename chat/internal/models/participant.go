@@ -14,6 +14,4 @@ type Participant struct {
 
 	JoinedAt   time.Time  `json:"joined_at" gorm:"autoCreateTime;not null"`
 	MutedUntil *time.Time `json:"muted_until"` // для групп
-
-	Chat Chat `gorm:"foreignKey:ChatID;constraint:OnDelete:CASCADE;"`
 }
