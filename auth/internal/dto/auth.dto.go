@@ -11,6 +11,7 @@ type AuthRequest struct {
 
 type VerifyOTPRequest struct {
 	UserID uuid.UUID `json:"user_id" binding:"required"`
+	Email  *string   `json:"email" binding:"required,email"`
 	Code   string    `json:"code" binding:"required,len=6"`
 	Action string    `json:"action" binding:"required"`
 }

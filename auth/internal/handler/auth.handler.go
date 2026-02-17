@@ -192,6 +192,15 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 			Message: "Успешная регистрация",
 		})
 		return
+	} else if req.Action == "change-mail" {
+		user.Email = *req.Email
+		err = h.sc.UpdateUser(user)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, true)
+		return
 	}
 
 	c.JSON(http.StatusOK, dto.MessageResponse{
@@ -434,7 +443,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	user, err := h.sc.GetUserByID(userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: "user not found"})
 		} else {
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		}
@@ -442,6 +451,40 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, user)
+}
+
+func (h *AuthHandler) ChangeMail(c *gin.Context) {
+	userID, _ := c.MustGet("userID").(uuid.UUID)
+
+	var req struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, dto.ErrorResponse{Code: 400, Error: "Incorrect data was transmitted in the body"})
+		return
+	}
+
+	user, err := h.sc.GetUserByID(userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: "user not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		}
+		return
+	}
+
+	// Отправляем OTP
+	_, _, err = h.sc.SendOTP(user.ID, req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "failed to generate OTP"})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.OTPSentResponse{
+		UserID:  user.ID,
+		Message: "OTP-код отправлен на указанную почту",
+	})
 }
 
 // ListSessions

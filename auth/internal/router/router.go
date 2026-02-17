@@ -52,6 +52,8 @@ func InitRouter() *gin.Engine {
 		protected.POST("/delete", authHandler.Delete)
 		protected.POST("/delete/confirm", authHandler.DeleteConfirm)
 
+		protected.PUT("/change-mail", authHandler.ChangeMail)
+
 		protected.POST("/logout", authHandler.LogoutCurrent)
 		protected.POST("/logout/all", authHandler.LogoutAll)
 		protected.DELETE("/logout/:token", authHandler.TerminateSession)
