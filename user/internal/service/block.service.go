@@ -4,6 +4,7 @@ import (
 	"errors"
 	"user/internal/models"
 	"user/internal/repository"
+	"user/pkg/database"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -43,11 +44,24 @@ func (sc *blockService) BlockUser(userID uuid.UUID, blockedUserID uuid.UUID) (*m
 	if userID == blockedUserID {
 		return nil, errors.New("нельзя заблокировать свой профиль")
 	}
+
+	var profile *models.Profile
+	err := database.GetDB().First(&profile, "id = ?", blockedUserID).Error
+	if err != nil {
+		return nil, err
+	}
+
 	var block = models.Block{
 		ProfileID:        userID,
 		BlockedProfileID: blockedUserID,
 	}
-	return sc.repo.BlockUser(&block)
+	err = sc.repo.BlockUser(&block)
+	if err != nil {
+		return nil, err
+	}
+	block.BlockedProfile = *profile
+
+	return &block, nil
 }
 
 func (sc *blockService) UnblockUser(userID uuid.UUID, blockedUserID uuid.UUID) error {

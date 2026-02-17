@@ -13,4 +13,7 @@ type Block struct {
 	BlockedProfileID uuid.UUID `json:"blocked_profile_id" gorm:"type:uuid;not null;index"`
 
 	CreatedAt time.Time `json:"created_at" gorm:"autoCreateTime"`
+
+	Profile        Profile `json:"-" gorm:"foreignKey:ProfileID;constraint:OnDelete:CASCADE;"`
+	BlockedProfile Profile `gorm:"foreignKey:BlockedProfileID;constraint:OnDelete:SET NULL;"`
 }

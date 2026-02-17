@@ -271,7 +271,7 @@ func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
 	}
 
 	// Отзываем текущий refresh-токен
-	if err := h.sc.RevokeRefreshToken(refreshToken); err != nil {
+	if err = h.sc.RevokeRefreshToken(refreshToken); err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
@@ -285,6 +285,22 @@ func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
 	utils.ClearAuthCookies(c)
 
 	c.JSON(http.StatusOK, dto.MessageResponse{Message: "Logged out from current device successfully"})
+}
+
+func (h *AuthHandler) TerminateSession(c *gin.Context) {
+	token := c.Param("token")
+	if token == "" {
+		c.JSON(400, dto.ErrorResponse{Code: 400, Error: "token is empty"})
+		return
+	}
+
+	err := h.sc.RevokeRefreshToken(token)
+	if err != nil {
+		c.JSON(500, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, true)
 }
 
 // LogoutAll
@@ -449,12 +465,13 @@ func (h *AuthHandler) ListSessions(c *gin.Context) {
 	var response []dto.SessionResponse
 	for _, s := range sessions {
 		response = append(response, dto.SessionResponse{
-			ID:        s.ID,
-			Device:    s.Device,
-			IP:        s.IP,
-			UserAgent: s.UserAgent,
-			CreatedAt: s.ExpiresAt.Add(-config.Env.RefreshTokenDuration),
-			ExpiresAt: s.ExpiresAt,
+			ID:           s.ID,
+			RefreshToken: s.Token,
+			Device:       s.Device,
+			IP:           s.IP,
+			UserAgent:    s.UserAgent,
+			CreatedAt:    s.ExpiresAt.Add(-config.Env.RefreshTokenDuration),
+			ExpiresAt:    s.ExpiresAt,
 		})
 	}
 	c.JSON(http.StatusOK, response)
