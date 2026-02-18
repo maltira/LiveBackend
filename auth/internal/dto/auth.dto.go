@@ -10,15 +10,16 @@ type AuthRequest struct {
 }
 
 type VerifyOTPRequest struct {
-	UserID uuid.UUID `json:"user_id" binding:"required"`
-	Email  *string   `json:"email" binding:"required,email"`
-	Code   string    `json:"code" binding:"required,len=6"`
-	Action string    `json:"action" binding:"required"`
+	UserID   uuid.UUID `json:"user_id" binding:"required"`
+	Email    *string   `json:"email"`
+	Password *string   `json:"password"`
+	Code     string    `json:"code" binding:"required,len=6"`
+	Action   string    `json:"action" binding:"required"`
 }
 
 type ResetPasswordRequest struct {
 	UserID      uuid.UUID `json:"user_id" binding:"required"`
-	NewPassword string    `json:"new_password" binding:"required,min=6"`
+	NewPassword string    `json:"new_password" binding:"required,min=8"`
 }
 
 type TempTokenRequest struct {
@@ -26,7 +27,7 @@ type TempTokenRequest struct {
 }
 
 type DeleteAccountRequest struct {
-	Password string `json:"password" binding:"required,min=6"`
+	Password string `json:"password" binding:"required,min=8"`
 }
 
 // * Responses

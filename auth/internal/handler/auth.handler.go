@@ -122,6 +122,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 	var req dto.VerifyOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		fmt.Println(err.Error())
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Incorrect data was transmitted in the body"})
 		return
 	}
@@ -194,6 +195,16 @@ func (h *AuthHandler) VerifyOTP(c *gin.Context) {
 		return
 	} else if req.Action == "change-mail" {
 		user.Email = *req.Email
+		err = h.sc.UpdateUser(user)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, true)
+		return
+	} else if req.Action == "change-pass" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(*req.Password), bcrypt.DefaultCost)
+		user.Password = string(hash)
 		err = h.sc.UpdateUser(user)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
@@ -476,6 +487,46 @@ func (h *AuthHandler) ChangeMail(c *gin.Context) {
 
 	// Отправляем OTP
 	_, _, err = h.sc.SendOTP(user.ID, req.Email)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "failed to generate OTP"})
+		return
+	}
+
+	c.JSON(http.StatusOK, dto.OTPSentResponse{
+		UserID:  user.ID,
+		Message: "OTP-код отправлен на указанную почту",
+	})
+}
+
+func (h *AuthHandler) ChangePass(c *gin.Context) {
+	userID, _ := c.MustGet("userID").(uuid.UUID)
+
+	var req struct {
+		Password    string `json:"password" binding:"required,min=8"`
+		NewPassword string `json:"new_password" binding:"required,min=8"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, dto.ErrorResponse{Code: 400, Error: "Incorrect data was transmitted in the body"})
+		return
+	}
+
+	if bcrypt.CompareHashAndPassword([]byte(req.Password), []byte(req.NewPassword)) == nil {
+		c.JSON(403, dto.ErrorResponse{Code: 403, Error: "new password should not be equal to old password"})
+		return
+	}
+
+	user, err := h.sc.GetUserByID(userID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: "user not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		}
+		return
+	}
+
+	// Отправляем OTP
+	_, _, err = h.sc.SendOTP(user.ID, user.Email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "failed to generate OTP"})
 		return
