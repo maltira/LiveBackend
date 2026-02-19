@@ -12,8 +12,9 @@ import (
 
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		accessToken, err := c.Cookie("access_token")
-		if err != nil || accessToken == "" {
+		accessToken, errA := c.Cookie("access_token")
+		refreshToken, errR := c.Cookie("refresh_token")
+		if errA != nil || errR != nil || accessToken == "" || refreshToken == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}

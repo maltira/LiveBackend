@@ -19,7 +19,7 @@ import (
 
 type AuthService interface {
 	Register(email, password string) (uuid.UUID, error)
-	Login(email, password string) (uuid.UUID, error)
+	Login(email, password string) (*uuid.UUID, error)
 	GetUserByID(id uuid.UUID) (*models.User, error)
 	GetUserByEmail(email string) (*models.User, error)
 	DeleteUserByID(id uuid.UUID) error
@@ -75,12 +75,18 @@ func (s *authService) Register(email, password string) (uuid.UUID, error) {
 	return user.ID, nil
 }
 
-func (s *authService) Login(email, password string) (uuid.UUID, error) {
+func (s *authService) Login(email, password string) (*uuid.UUID, error) {
 	user, err := s.repo.FindByEmail(email)
-	if err != nil || bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)) != nil || !user.IsVerified {
-		return uuid.Nil, errors.New("invalid credentials")
+	if err != nil {
+		return nil, err
 	}
-	return user.ID, err
+	if !user.IsVerified {
+		return nil, errors.New("not verified")
+	}
+	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)) != nil {
+		return nil, errors.New("invalid credentials")
+	}
+	return &user.ID, err
 }
 
 func (s *authService) GetUserByID(id uuid.UUID) (*models.User, error) {
@@ -154,11 +160,11 @@ func (s *authService) GenerateTokens(userID uuid.UUID, ip, userAgent, device str
 func (s *authService) Refresh(refreshToken string) (string, string, error) {
 	rt, err := s.repo.FindValidByToken(refreshToken)
 	if err != nil {
-		return "", "", errors.New("invalid or expired token")
+		return "", "", err
 	}
 
 	// Отзываем старый
-	err = s.repo.Revoke(refreshToken)
+	_ = s.repo.Revoke(refreshToken)
 
 	access, newRefresh, err := s.GenerateTokens(rt.UserID, rt.IP, rt.UserAgent, rt.Device)
 	return access, newRefresh, err
