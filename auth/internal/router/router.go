@@ -20,6 +20,8 @@ func InitRouter() *gin.Engine {
 	authRepo := repository.NewAuthRepository(authdb.GetDB())
 	authService := service.NewAuthService(authRepo)
 	authHandler := handler.NewAuthHandler(authService)
+	otpHandler := handler.NewOtpHandler(authService)
+	refreshHandler := handler.NewRefreshHandler(authService)
 
 	r := gin.Default()
 	r.ForwardedByClientIP = true
@@ -30,9 +32,8 @@ func InitRouter() *gin.Engine {
 	{
 		sensitive.POST("/register", authHandler.Register)
 		sensitive.POST("/login", authHandler.Login)
-		sensitive.POST("/verify", authHandler.VerifyOTP)
-		sensitive.POST("/refresh", authHandler.Refresh)
-		sensitive.POST("/resend", authHandler.ResendOTP)
+		sensitive.POST("/verify", otpHandler.VerifyOTP)
+		sensitive.POST("/resend", otpHandler.ResendOTP)
 	}
 
 	resetGroup := api.Group("")
@@ -46,8 +47,10 @@ func InitRouter() *gin.Engine {
 	protected := api.Group("")
 	protected.Use(middleware.AuthMiddleware())
 	{
+		protected.POST("/refresh", refreshHandler.Refresh)
+
 		protected.GET("/me", authHandler.Me)
-		protected.GET("/sessions", authHandler.ListSessions)
+		protected.GET("/sessions", refreshHandler.ListSessions)
 
 		protected.POST("/delete", authHandler.Delete)
 		protected.POST("/delete/confirm", authHandler.DeleteConfirm)
@@ -57,7 +60,7 @@ func InitRouter() *gin.Engine {
 
 		protected.POST("/logout", authHandler.LogoutCurrent)
 		protected.POST("/logout/all", authHandler.LogoutAll)
-		protected.DELETE("/logout/:token", authHandler.TerminateSession)
+		protected.DELETE("/logout/:token", refreshHandler.TerminateSession)
 	}
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
