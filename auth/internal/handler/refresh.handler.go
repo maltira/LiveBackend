@@ -33,6 +33,10 @@ func NewRefreshHandler(sc service.AuthService) *RefreshHandler {
 // @Router       /auth/refresh [post]
 func (h *RefreshHandler) Refresh(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
+	if err != nil || refreshToken == "" {
+		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: config.UnauthorizedError})
+		return
+	}
 	access, refresh, err := h.sc.Refresh(refreshToken)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

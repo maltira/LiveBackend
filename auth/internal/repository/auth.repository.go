@@ -77,12 +77,7 @@ func (r *authRepository) ScheduleDeletion(userID uuid.UUID, deletionTime time.Ti
 }
 
 func (r *authRepository) CancelDeletion(userID uuid.UUID) error {
-	user, err := r.FindByID(userID)
-	if err != nil {
-		return err
-	}
-	user.ToBeDeletedAt = nil
-	return r.db.Save(user).Error
+	return r.db.Model(&models.User{}).Where("id = ?", userID).Update("to_be_deleted_at", nil).Error
 }
 
 func (r *authRepository) UpdateUser(user *models.User) error {

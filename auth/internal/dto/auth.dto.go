@@ -1,6 +1,10 @@
 package dto
 
-import "github.com/google/uuid"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // * Requests
 
@@ -54,7 +58,8 @@ type TempTokenResponse struct {
 	UserID    uuid.UUID `json:"user_id"`
 	TempToken string    `json:"temp_token"`
 }
+
 type RecoveryResponse struct {
-	Message       string `json:"message"`
-	RecoveryToken string `json:"recovery_token"`
+	ToBeDeletedAt time.Time `json:"to_be_deleted_at"`
+	RecoveryToken string    `json:"recovery_token"`
 }

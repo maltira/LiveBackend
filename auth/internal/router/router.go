@@ -34,6 +34,7 @@ func InitRouter() *gin.Engine {
 		sensitive.POST("/login", authHandler.Login)
 		sensitive.POST("/verify", otpHandler.VerifyOTP)
 		sensitive.POST("/resend", otpHandler.ResendOTP)
+		sensitive.POST("/refresh", refreshHandler.Refresh)
 	}
 
 	resetGroup := api.Group("")
@@ -41,22 +42,19 @@ func InitRouter() *gin.Engine {
 	{
 		resetGroup.POST("/forgot-password", authHandler.ForgotPassword)
 		resetGroup.POST("/reset-password", authHandler.ResetPassword)
-		resetGroup.POST("/delete/cancel", authHandler.DeleteCancel)
+		resetGroup.PUT("/recovery/:id", middleware.ValidateUUID(), authHandler.RecoveryAccount)
 	}
 
 	protected := api.Group("")
 	protected.Use(middleware.AuthMiddleware())
 	{
-		protected.POST("/refresh", refreshHandler.Refresh)
-
 		protected.GET("/me", authHandler.Me)
 		protected.GET("/sessions", refreshHandler.ListSessions)
 
-		protected.POST("/delete", authHandler.Delete)
-		protected.POST("/delete/confirm", authHandler.DeleteConfirm)
-
 		protected.POST("/change-mail", authHandler.ChangeMail)
 		protected.POST("/change-pass", authHandler.ChangePass)
+
+		protected.POST("/delete/:email", authHandler.Delete)
 
 		protected.POST("/logout", authHandler.LogoutCurrent)
 		protected.POST("/logout/all", authHandler.LogoutAll)

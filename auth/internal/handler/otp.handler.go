@@ -68,6 +68,9 @@ func (h *OtpHandler) VerifyOTP(c *gin.Context) {
 		}
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка получения пользователя: " + err.Error()})
 		return
+	} else if user.ToBeDeletedAt != nil && time.Now().After(*user.ToBeDeletedAt) {
+		c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
+		return
 	}
 
 	switch req.Action {
@@ -79,6 +82,8 @@ func (h *OtpHandler) VerifyOTP(c *gin.Context) {
 		h.handleChangeMailAction(c, user, req.Email)
 	case "change-pass":
 		h.handleChangePasswordAction(c, user, req.Password)
+	case "delete-account":
+		h.handleDeleteAccountAction(c, user)
 	default:
 		c.JSON(404, dto.ErrorResponse{Code: 404, Error: "Указанное действие не найдено"})
 	}
@@ -129,9 +134,10 @@ func (h *OtpHandler) handleLoginAction(c *gin.Context, user *models.User) {
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка recovery_token: " + err.Error()})
 			return
 		}
+		// возвращем токен для восстановления аккаунта
 		c.JSON(http.StatusOK, dto.RecoveryResponse{
-			Message:       "Восстановление аккаунта",
 			RecoveryToken: recoveryToken,
+			ToBeDeletedAt: *user.ToBeDeletedAt,
 		})
 		return
 	}
@@ -196,6 +202,23 @@ func (h *OtpHandler) handleChangePasswordAction(c *gin.Context, user *models.Use
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка обновления: " + err.Error()})
 		return
 	}
+
+	c.JSON(http.StatusOK, true)
+}
+
+func (h *OtpHandler) handleDeleteAccountAction(c *gin.Context, user *models.User) {
+	deletionTime := time.Now().Add(3 * 24 * time.Hour)
+	err := h.sc.ScheduleDeletion(user.ID, deletionTime)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка планирования удаления: " + err.Error()})
+		return
+	}
+
+	_ = h.sc.RevokeAllRefreshTokens(user.ID)
+	accessToken, _ := c.Cookie("access_token")
+	_ = h.sc.BlacklistAccessToken(c, accessToken)
+
+	utils.ClearAuthCookies(c)
 
 	c.JSON(http.StatusOK, true)
 }

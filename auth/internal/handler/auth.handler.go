@@ -7,7 +7,6 @@ import (
 	"auth/pkg/utils"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -91,7 +90,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Отправляем OTP
 	_, _, err = h.sc.SendOTP(*id, req.Email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
@@ -112,7 +110,6 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Tags         logout
 // @Produce      json
 // @Success      200  {boolean} true
-// @Failure      403  {object} dto.ErrorResponse "Некорректный токен"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/logout [post]
 func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
@@ -275,7 +272,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param body body dto.ChangeEmailRequest true "Данные новой почты"
-// @Success 	200  {object} dto.OTPSentResponse "Подтвердите смену почты"
+// @Success 	200  {boolean} true
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure     404  {object} dto.ErrorResponse "Запись не найдена"
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -305,10 +302,7 @@ func (h *AuthHandler) ChangeMail(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, dto.OTPSentResponse{
-		UserID:  user.ID,
-		Message: "OTP-код отправлен на указанную почту",
-	})
+	c.JSON(http.StatusOK, true)
 }
 
 // ChangePass
@@ -318,7 +312,7 @@ func (h *AuthHandler) ChangeMail(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param body body dto.ChangeEmailRequest true "Старый и новый пароль"
-// @Success 	200  {object} dto.OTPSentResponse "Подтвердите смену пароля"
+// @Success 	200  {boolean} true
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure     403  {object} dto.ErrorResponse "Неверный данные, доступ запрещен"
 // @Failure     404  {object} dto.ErrorResponse "Запись не найдена"
@@ -359,10 +353,7 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, dto.OTPSentResponse{
-		UserID:  user.ID,
-		Message: "OTP-код отправлен на указанную почту",
-	})
+	c.JSON(http.StatusOK, true)
 }
 
 // ! Удаление аккаунта
@@ -370,112 +361,57 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 // Delete
 // @Summary      Запрос на удаление аккаунта
 // @Description  Повторный ввод пароля, генерация токена удаления
-// @Tags         user
+// @Tags         delete
 // @Produce      json
-// @Success      200  {object} dto.TempTokenResponse "Токен для удаления"
-// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
-// @Failure      403  {object} dto.ErrorResponse "Неверный пароль"
+// @Success      200  {object} dto.OTPSentResponse "Подтвердите удаление"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/delete [post]
 func (h *AuthHandler) Delete(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
-	var req dto.DeleteAccountRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
-		return
-	}
+	email := c.Param("email")
 
-	user, err := h.sc.GetUserByID(userID)
-	if err != nil || bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) != nil {
-		c.JSON(http.StatusForbidden, dto.ErrorResponse{Code: 403, Error: "Неверный пароль"})
-		return
-	}
-
-	// Генерируем temp-токен для подтверждения удаления
-	deleteToken, err := utils.GenerateTempToken(user.ID, 15*time.Minute, "delete_token")
+	_, _, err := h.sc.SendOTP(userID, email)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации токена: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, dto.TempTokenResponse{
-		UserID:    userID,
-		TempToken: deleteToken,
+
+	c.JSON(http.StatusOK, dto.OTPSentResponse{
+		UserID:  userID,
+		Message: "OTP-код отправлен на указанную почту",
 	})
 }
 
-// DeleteConfirm
-// @Summary      Подтверждение удаления аккаунта
-// @Description  Отложенно удаляет аккаунт на 3 дня
-// @Tags         user
-// @Produce      json
-// @Success      200  {object} dto.MessageResponse "Успешный запрос"
-// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
-// @Failure      403  {object} dto.ErrorResponse "Некорректный токен"
-// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/delete/confirm [post]
-func (h *AuthHandler) DeleteConfirm(c *gin.Context) {
-	deleteToken := c.DefaultQuery("token", "")
-	if deleteToken == "" {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError + ": delete_token is empty"})
-		return
-	}
-	// Проверяем временный токен
-	claims, err := utils.ValidateTempToken(deleteToken)
-	if err != nil || claims["action"] != "delete_token" {
-		c.JSON(http.StatusForbidden, dto.ErrorResponse{Code: 403, Error: config.InvalidTokenError})
-		return
-	}
-
-	userID := claims["id"].(string)
-	userUUID := uuid.MustParse(userID)
-
-	deletionTime := time.Now().Add(3 * 24 * time.Hour)
-	err = h.sc.ScheduleDeletion(userUUID, deletionTime)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка планирования удаления: " + err.Error()})
-		return
-	}
-
-	// Выходим со всех устройств
-	_ = h.sc.RevokeAllRefreshTokens(userUUID)
-	accessToken, _ := c.Cookie("access_token")
-	_ = h.sc.BlacklistAccessToken(c, accessToken)
-
-	utils.ClearAuthCookies(c)
-
-	c.JSON(http.StatusOK, dto.MessageResponse{
-		Message: "Аккаунт будет удалён через 3 дня. Вы можете восстановить доступ в любое время до истечения этого срока.",
-	})
-}
-
-// DeleteCancel
+// RecoveryAccount
 // @Summary      Восстановление аккаунта (после удаления)
 // @Description  Восстанавливает удаленный аккаунт
-// @Tags         user
+// @Tags         delete
 // @Produce      json
+// @Param		 id path string true "uuid пользователя"
+// @Param		 token query string true "recovery_token"
 // @Success      200  {boolean} true
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      403  {object} dto.ErrorResponse "Некорректный токен"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/delete/cancel [post]
-func (h *AuthHandler) DeleteCancel(c *gin.Context) {
+// @Router       /auth/recovery/{id} [put]
+func (h *AuthHandler) RecoveryAccount(c *gin.Context) {
+	id := c.Param("id")
+	userID := uuid.MustParse(id)
 	recoveryToken := c.DefaultQuery("token", "")
 	if recoveryToken == "" {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError + ": recovery_token is empty"})
 		return
 	}
-	// Проверяем временный токен
+
 	claims, err := utils.ValidateTempToken(recoveryToken)
 	if err != nil || claims["action"] != "recovery_token" {
 		c.JSON(http.StatusForbidden, dto.ErrorResponse{Code: 403, Error: config.InvalidTokenError})
 		return
 	}
-	userID := claims["id"].(string)
-	userUUID := uuid.MustParse(userID)
 
-	err = h.sc.CancelDeletion(userUUID)
+	err = h.sc.CancelDeletion(userID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка отмены удаления: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка восстановления: " + err.Error()})
 		return
 	}
 
