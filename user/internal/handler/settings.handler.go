@@ -27,7 +27,7 @@ func NewSettingsHandler(sc service.SettingsService) *SettingsHandler {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
 // @Router       /user/settings [get]
 func (h *SettingsHandler) GetSettings(c *gin.Context) {
-	id := c.MustGet("id").(uuid.UUID)
+	id := c.MustGet("userID").(uuid.UUID)
 
 	settings, err := h.sc.GetSettings(id)
 	if err != nil {
@@ -45,13 +45,13 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        body body dto.SettingsUpdateRequest true "Обновленные настройки"
-// @Success      200  {object} dto.MessageResponse "Настройки сохранены"
+// @Success      200  {boolean} true
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные или нечего обновлять"
 // @Failure      401  {object} dto.ErrorResponse "Неавторизован"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
 // @Router       /user/settings [put]
 func (h *SettingsHandler) SaveSettings(c *gin.Context) {
-	id := c.MustGet("id").(uuid.UUID)
+	id := c.MustGet("userID").(uuid.UUID)
 
 	var req dto.SettingsUpdateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -69,5 +69,5 @@ func (h *SettingsHandler) SaveSettings(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, dto.MessageResponse{Message: "Настройки сохранены"})
+	c.JSON(http.StatusOK, true)
 }

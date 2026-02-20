@@ -26,31 +26,23 @@ func (s *settingsService) GetSettings(profileID uuid.UUID) (*models.Settings, er
 	return s.repo.GetSettings(profileID)
 }
 func (s *settingsService) SaveSettings(userID uuid.UUID, req *dto.SettingsUpdateRequest) error {
-	settings, err := s.repo.GetSettings(userID)
-	if err != nil {
-		return err
+	updates := make(map[string]interface{})
+
+	if req.DarkMode != nil {
+		updates["dark_mode"] = *req.DarkMode
+	}
+	if req.ShowOnlineStatus != nil {
+		updates["show_online_status"] = *req.ShowOnlineStatus
+	}
+	if req.ShowBirthDate != nil {
+		updates["show_birth_date"] = *req.ShowBirthDate
+	}
+	if req.Language != nil {
+		updates["language"] = *req.Language
 	}
 
-	flag := false
-	if req.DarkMode != settings.DarkMode {
-		settings.DarkMode = req.DarkMode
-		flag = true
-	}
-	if req.ShowOnlineStatus != settings.ShowOnlineStatus {
-		settings.ShowOnlineStatus = req.ShowOnlineStatus
-		flag = true
-	}
-	if req.ShowBirthDate != settings.ShowBirthDate {
-		settings.ShowBirthDate = req.ShowBirthDate
-		flag = true
-	}
-	if req.Language != settings.Language {
-		settings.Language = req.Language
-		flag = true
-	}
-
-	if !flag {
+	if len(updates) == 0 {
 		return errors.New("no settings to update")
 	}
-	return s.repo.SaveSettings(settings)
+	return s.repo.SaveSettings(userID, updates)
 }
