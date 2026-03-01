@@ -2,7 +2,6 @@ package service
 
 import (
 	"errors"
-	"time"
 	"user/internal/models"
 	"user/internal/models/dto"
 	"user/internal/repository"
@@ -29,48 +28,36 @@ func NewProfileService(repo repository.ProfileRepository) ProfileService {
 }
 
 func (sc *profileService) Update(userID uuid.UUID, profile *dto.UpdateProfileRequest) error {
-	user, err := sc.repo.FindByID(userID)
-	var flag = false
+	updates := make(map[string]interface{})
 
-	if err != nil {
-		return errors.New("user not found")
-	}
-
-	if profile.Username != "" && user.Username != profile.Username {
-		err = sc.repo.UsernameExists(user.Username)
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			user.Username = profile.Username
-			flag = true
+	if profile.Username != nil {
+		err := sc.repo.UsernameExists(*profile.Username)
+		if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+			updates["username"] = *profile.Username
 		} else {
 			return errors.New("это имя пользователя занято")
 		}
 	}
-	if profile.FullName != "" && user.FullName != profile.FullName {
-		user.FullName = profile.FullName
-		flag = true
+	if profile.FullName != nil {
+		updates["full_name"] = *profile.FullName
 	}
-	if profile.Bio != user.Bio {
-		user.Bio = profile.Bio
-		flag = true
+	if profile.Bio != nil {
+		updates["bio"] = *profile.Bio
 	}
-	if profile.AvatarURL != user.AvatarURL {
-		user.AvatarURL = profile.AvatarURL
-		flag = true
+	if profile.AvatarURL != nil {
+		updates["avatar_url"] = *profile.AvatarURL
 	}
 
-	now := time.Now()
-	if profile.BirthDate == nil {
-		user.BirthDate = nil
-	} else if (*profile.BirthDate).Before(now) {
-		user.BirthDate = profile.BirthDate
-	} else {
-		return errors.New("некорректная дата рождения")
+	if profile.BirthDate != nil {
+		updates["birth_date"] = *profile.BirthDate
+	} else if profile.BirthDateIsSet == true {
+		updates["birth_date"] = nil
 	}
 
-	if flag {
-		return sc.repo.Update(user)
+	if len(updates) == 0 {
+		return errors.New("no columns to update")
 	}
-	return errors.New("no columns to update")
+	return sc.repo.Update(userID, updates)
 }
 
 func (sc *profileService) GetAll() ([]models.Profile, error) {

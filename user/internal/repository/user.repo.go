@@ -11,7 +11,7 @@ import (
 
 type ProfileRepository interface {
 	Create(user *models.Profile) error
-	Update(user *models.Profile) error
+	Update(userID uuid.UUID, updates map[string]interface{}) error
 
 	GetAll() ([]models.Profile, error)
 	GetAllBySearch(query string, limit int) ([]models.Profile, error)
@@ -32,8 +32,8 @@ func NewProfileRepository(db *gorm.DB) ProfileRepository {
 func (r *profileRepository) Create(user *models.Profile) error {
 	return r.db.Create(user).Error
 }
-func (r *profileRepository) Update(user *models.Profile) error {
-	return r.db.Save(user).Error
+func (r *profileRepository) Update(userID uuid.UUID, updates map[string]interface{}) error {
+	return r.db.Model(models.Profile{}).Where("id = ?", userID).Updates(updates).Error
 }
 
 func (r *profileRepository) GetAll() ([]models.Profile, error) {
