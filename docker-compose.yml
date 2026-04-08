@@ -7,6 +7,17 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+  postgres:
+    container_name: chat-postgres
+    image: postgres:alpine3.22
+    restart: unless-stopped
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 12341234
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
   rabbitmq:
     container_name: chat-rabbitmq
     image: rabbitmq:latest
@@ -16,6 +27,17 @@ services:
       - "15672:15672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+  gateway:
+    container_name: chat-gateway
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    image: chat-platform/gateway
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./.env:/app/.env
   auth:
     container_name: chat-auth
     build:
@@ -27,6 +49,7 @@ services:
       - "8001:8001"
     depends_on:
       - redis
+      - postgres
       - rabbitmq
     volumes:
       - ./.env:/app/.env
@@ -41,6 +64,7 @@ services:
       - "8002:8002"
     depends_on:
       - redis
+      - postgres
       - rabbitmq
     volumes:
       - ./.env:/app/.env
@@ -55,9 +79,11 @@ services:
       - "8003:8003"
     depends_on:
       - redis
+      - postgres
       - rabbitmq
     volumes:
       - ./.env:/app/.env
 volumes:
   redis-data:
+  postgres_data:
   rabbitmq-data:

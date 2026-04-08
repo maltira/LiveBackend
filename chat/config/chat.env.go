@@ -25,7 +25,9 @@ var Env *Config
 
 func InitEnv() {
 	if err := godotenv.Load("../.env"); err != nil {
-		panic(".env file not found")
+		if err = godotenv.Load(".env"); err != nil {
+			panic(".env file not found")
+		}
 	}
 
 	Env = &Config{
