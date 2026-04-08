@@ -6,7 +6,6 @@ import (
 	"log"
 	"user/internal/models"
 	"user/pkg/rabbitmq"
-	"user/pkg/utils"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -34,7 +33,7 @@ func StartUserEventsConsumer(db *gorm.DB) {
 			ID:        userID,
 			Username:  name,
 			FullName:  name,
-			AvatarURL: utils.RandomAvatar(),
+			AvatarURL: "https://i.ibb.co/2Y0R1nDf/avatar-white.png",
 		}
 		settings := models.Settings{
 			ProfileID: userID,

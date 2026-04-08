@@ -116,7 +116,7 @@ func (h *ProfileHandler) SearchProfiles(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        body body dto.UpdateProfileRequest true "Новые данные профиля"
-// @Success      200  {object} dto.MessageResponse "Профиль успешно обновлён"
+// @Success      200  {boolean} true
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные или username занят"
 // @Failure      401  {object} dto.ErrorResponse "Неавторизован"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -138,7 +138,7 @@ func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, dto.MessageResponse{Message: "Профиль успешно обновлен"})
+	c.JSON(http.StatusOK, true)
 }
 
 // IsUsernameFree
