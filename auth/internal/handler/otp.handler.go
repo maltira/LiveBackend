@@ -17,11 +17,13 @@ import (
 )
 
 type OtpHandler struct {
-	sc service.AuthService
+	osc service.OtpService
+	asc service.AuthService
+	tsc service.TokenService
 }
 
-func NewOtpHandler(sc service.AuthService) *OtpHandler {
-	return &OtpHandler{sc: sc}
+func NewOtpHandler(osc service.OtpService, asc service.AuthService, tsc service.TokenService) *OtpHandler {
+	return &OtpHandler{osc: osc, asc: asc, tsc: tsc}
 }
 
 // VerifyOTP
@@ -44,13 +46,13 @@ func (h *OtpHandler) VerifyOTP(c *gin.Context) {
 		return
 	}
 
-	otp, err := h.sc.FindValidOTP(req.UserID, req.Code)
+	otp, err := h.osc.FindValidOTP(req.UserID, req.Code)
 	if err != nil {
 		c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.InvalidOtpError})
 		return
 	}
 
-	if err = h.sc.MarkOTPAsUsed(otp.ID); err != nil {
+	if err = h.osc.MarkOTPAsUsed(otp.ID); err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": OTP-код"})
 			return
@@ -58,7 +60,7 @@ func (h *OtpHandler) VerifyOTP(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка отметки OTP: " + err.Error()})
 	}
 
-	user, err := h.sc.GetUserByID(req.UserID)
+	user, err := h.asc.GetUserByID(req.UserID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
@@ -113,7 +115,7 @@ func (h *OtpHandler) ResendOTP(c *gin.Context) {
 		return
 	}
 
-	err = h.sc.SendOTP(userID, email)
+	err = h.osc.SendOTP(userID, email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP-кода: " + err.Error()})
 		return
@@ -141,7 +143,7 @@ func (h *OtpHandler) handleLoginAction(c *gin.Context, user *models.User) {
 	ip := c.ClientIP()
 	userAgent := c.Request.UserAgent()
 	device := utils.ParseDeviceInfo(userAgent)
-	access, refresh, _ := h.sc.GenerateTokens(user.ID, ip, userAgent, device)
+	access, refresh, _ := h.tsc.GenerateTokens(user.ID, ip, userAgent, device)
 
 	utils.SetAuthCookies(c, refresh)
 
@@ -159,7 +161,7 @@ func (h *OtpHandler) handleChangeMailAction(c *gin.Context, user *models.User, e
 	}
 
 	user.Email = *email
-	if err := h.sc.UpdateUser(user); err != nil {
+	if err := h.asc.UpdateUser(user); err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка обновления: " + err.Error()})
 		return
 	}
@@ -174,7 +176,7 @@ func (h *OtpHandler) handleChangePasswordAction(c *gin.Context, user *models.Use
 
 	hash, _ := bcrypt.GenerateFromPassword([]byte(*password), bcrypt.DefaultCost)
 	user.Password = string(hash)
-	if err := h.sc.UpdateUser(user); err != nil {
+	if err := h.asc.UpdateUser(user); err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка обновления: " + err.Error()})
 		return
 	}
@@ -184,15 +186,13 @@ func (h *OtpHandler) handleChangePasswordAction(c *gin.Context, user *models.Use
 
 func (h *OtpHandler) handleDeleteAccountAction(c *gin.Context, user *models.User) {
 	deletionTime := time.Now().Add(3 * 24 * time.Hour)
-	err := h.sc.ScheduleDeletion(user.ID, deletionTime)
+	err := h.asc.ScheduleDeletion(user.ID, deletionTime)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка планирования удаления: " + err.Error()})
 		return
 	}
 
-	_ = h.sc.RevokeAllRefreshTokens(user.ID)
-	accessToken, _ := c.Cookie("access_token")
-	_ = h.sc.BlacklistAccessToken(c, accessToken)
+	_ = h.tsc.RevokeAllRefreshTokens(user.ID, nil)
 
 	utils.ClearAuthCookies(c)
 

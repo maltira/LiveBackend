@@ -18,11 +18,13 @@ import (
 )
 
 type AuthHandler struct {
-	sc service.AuthService
+	asc service.AuthService
+	osc service.OtpService
+	tsc service.TokenService
 }
 
-func NewAuthHandler(sc service.AuthService) *AuthHandler {
-	return &AuthHandler{sc: sc}
+func NewAuthHandler(asc service.AuthService, osc service.OtpService, tsc service.TokenService) *AuthHandler {
+	return &AuthHandler{asc: asc, osc: osc, tsc: tsc}
 }
 
 // Register
@@ -44,7 +46,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	err := h.sc.Register(req.Email, req.Password)
+	err := h.asc.Register(req.Email, req.Password)
 	if err != nil {
 		if err.Error() == "email already exists" {
 			c.JSON(http.StatusConflict, dto.ErrorResponse{Code: 409, Error: "Пользователь с такой почтой уже существует"})
@@ -75,7 +77,7 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 		return
 	}
 
-	user, err := h.sc.VerifyNewAccount(token)
+	user, err := h.asc.VerifyNewAccount(token)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
@@ -109,7 +111,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	id, err := h.sc.Login(req.Email, req.Password)
+	id, err := h.asc.Login(req.Email, req.Password)
 	if err != nil {
 		switch {
 		case err.Error() == "account is not verified":
@@ -122,7 +124,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	err = h.sc.SendOTP(id, req.Email)
+	err = h.osc.SendOTP(id, req.Email)
 	if err != nil {
 		log.Println("Ошибка генерации OTP:" + err.Error())
 		// не прерываемся, тк пользователь сможет переотправить код
@@ -144,17 +146,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Router       /auth/logout [post]
 func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
 	refreshToken, _ := c.Cookie("refresh_token")
-
-	// Отзываем текущий refresh-токен
-	if err := h.sc.RevokeRefreshToken(refreshToken); err != nil {
+	if err := h.tsc.RevokeRefreshToken(refreshToken); err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка отзыва токена: " + err.Error()})
 		return
 	}
-
-	// Добавляем текущий access-токен в blacklist
-	//accessToken, _ := c.Cookie("access_token")
-	//_ = h.sc.BlacklistAccessToken(c, accessToken)
-
 	utils.ClearAuthCookies(c)
 
 	c.JSON(http.StatusOK, true)
@@ -162,7 +157,7 @@ func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
 
 // LogoutAll
 // @Summary      Выход из системы
-// @Description  Завершает все сессии пользователя, отзывает токены и очищает cookie.
+// @Description  Завершает все сессии пользователя, кроме текущей
 // @Tags         logout
 // @Produce      json
 // @Success      200  {boolean} true
@@ -171,16 +166,12 @@ func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
 // @Router       /auth/logout/all [post]
 func (h *AuthHandler) LogoutAll(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
+	refreshToken, _ := c.Cookie("refresh_token")
 
-	if err := h.sc.RevokeAllRefreshTokens(userID); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка отзыва: " + err.Error()})
+	if err := h.tsc.RevokeAllRefreshTokens(userID, &refreshToken); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка отзыва токенов: " + err.Error()})
 		return
 	}
-
-	accessToken, _ := c.Cookie("access_token")
-	_ = h.sc.BlacklistAccessToken(c, accessToken)
-
-	utils.ClearAuthCookies(c)
 
 	c.JSON(http.StatusOK, true)
 }
@@ -207,7 +198,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	user, err := h.sc.GetUserByEmail(email)
+	user, err := h.asc.GetUserByEmail(email)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
@@ -222,7 +213,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	}
 
 	// Отправляем OTP
-	err = h.sc.SendOTP(user.ID, email)
+	err = h.osc.SendOTP(user.ID, email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
 		return
@@ -253,15 +244,13 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	err := h.sc.UpdatePassword(req.UserID, req.NewPassword)
+	err := h.asc.UpdatePassword(req.UserID, req.NewPassword)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка обновления: " + err.Error()})
 		return
 	}
 
-	_ = h.sc.RevokeAllRefreshTokens(req.UserID)
-	accessToken, _ := c.Cookie("access_token")
-	_ = h.sc.BlacklistAccessToken(c, accessToken)
+	_ = h.tsc.RevokeAllRefreshTokens(req.UserID, nil)
 
 	utils.ClearAuthCookies(c)
 
@@ -282,7 +271,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 func (h *AuthHandler) Me(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
 
-	user, err := h.sc.GetUserByID(userID)
+	user, err := h.asc.GetUserByID(userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
@@ -316,7 +305,7 @@ func (h *AuthHandler) ChangeMail(c *gin.Context) {
 		return
 	}
 
-	user, err := h.sc.GetUserByID(userID)
+	user, err := h.asc.GetUserByID(userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
@@ -326,7 +315,7 @@ func (h *AuthHandler) ChangeMail(c *gin.Context) {
 		return
 	}
 
-	err = h.sc.SendOTP(user.ID, req.Email)
+	err = h.osc.SendOTP(user.ID, req.Email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
 		return
@@ -357,7 +346,7 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 		return
 	}
 
-	user, err := h.sc.GetUserByID(userID)
+	user, err := h.asc.GetUserByID(userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
@@ -377,7 +366,7 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 		return
 	}
 
-	err = h.sc.SendOTP(user.ID, user.Email)
+	err = h.osc.SendOTP(user.ID, user.Email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
 		return
@@ -400,7 +389,7 @@ func (h *AuthHandler) Delete(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
 	email := c.Param("email")
 
-	err := h.sc.SendOTP(userID, email)
+	err := h.osc.SendOTP(userID, email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
 		return
@@ -439,7 +428,7 @@ func (h *AuthHandler) RecoveryAccount(c *gin.Context) {
 		return
 	}
 
-	err = h.sc.CancelDeletion(userID)
+	err = h.asc.CancelDeletion(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка восстановления: " + err.Error()})
 		return

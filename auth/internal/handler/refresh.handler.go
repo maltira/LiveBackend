@@ -14,11 +14,11 @@ import (
 )
 
 type RefreshHandler struct {
-	sc service.AuthService
+	tsc service.TokenService
 }
 
-func NewRefreshHandler(sc service.AuthService) *RefreshHandler {
-	return &RefreshHandler{sc: sc}
+func NewRefreshHandler(tsc service.TokenService) *RefreshHandler {
+	return &RefreshHandler{tsc: tsc}
 }
 
 // Refresh
@@ -37,7 +37,7 @@ func (h *RefreshHandler) Refresh(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: config.UnauthorizedError})
 		return
 	}
-	_, refresh, err := h.sc.Refresh(refreshToken)
+	_, refresh, err := h.tsc.Refresh(refreshToken)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(404, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": refresh_token"})
@@ -70,7 +70,7 @@ func (h *RefreshHandler) TerminateSession(c *gin.Context) {
 		return
 	}
 
-	err := h.sc.RevokeRefreshToken(token)
+	err := h.tsc.RevokeRefreshToken(token)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(404, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": refresh_token"})
@@ -95,7 +95,7 @@ func (h *RefreshHandler) TerminateSession(c *gin.Context) {
 func (h *RefreshHandler) ListSessions(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
 
-	sessions, err := h.sc.ListActiveSessions(userID)
+	sessions, err := h.tsc.ListActiveSessions(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
