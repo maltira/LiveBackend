@@ -1,39 +1,52 @@
 package middleware
 
 import (
-	"auth/pkg/redis"
+	"auth/internal/repository"
 	"auth/pkg/utils"
 	"net/http"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
-func AuthMiddleware() gin.HandlerFunc {
+func AuthMiddleware(repo repository.TokenRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		accessToken, errA := c.Cookie("access_token")
-		refreshToken, errR := c.Cookie("refresh_token")
-		if errA != nil || errR != nil || accessToken == "" || refreshToken == "" {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
-		token, err := utils.ParseToken(accessToken)
-		if err != nil || !token.Valid {
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		if tokenString == authHeader { // не было префикса Bearer
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		parsedToken, err := utils.ParseToken(tokenString)
+		if err != nil || !parsedToken.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 			return
 		}
-		claims, _ := token.Claims.(jwt.MapClaims)
 
-		jti, _ := claims["jti"].(string)
-		if jti != "" {
-			key := "auth:blacklist:access:" + jti
-			exists, _ := redis.AuthRedis.Get(c.Request.Context(), key).Result()
-			if exists != "" { // ключ существует -> токен отозван
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token revoked"})
-				return
-			}
+		claims, ok := parsedToken.Claims.(jwt.MapClaims)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+			return
+		}
+
+		refreshToken, err := c.Cookie("refresh_token")
+		if err != nil || refreshToken == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired session"})
+			return
+		}
+		rt, err := repo.FindRefreshToken(refreshToken)
+		if err != nil || time.Now().After(rt.ExpiresAt) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired session"})
+			return
 		}
 
 		c.Set("userID", uuid.MustParse(claims["id"].(string)))
