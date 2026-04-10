@@ -160,6 +160,7 @@ func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
 // @Description  Завершает все сессии пользователя, кроме текущей
 // @Tags         logout
 // @Produce      json
+// @Security     BearerAuth
 // @Success      200  {boolean} true
 // @Failure      403  {object} dto.ErrorResponse "Некорректный токен"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -264,6 +265,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 // @Description  Возвращает данные авторизованного пользователя
 // @Tags         auth
 // @Produce      json
+// @Security     BearerAuth
 // @Success      200  {object} dto.User "Информация о пользователе"
 // @Failure      404  {object} dto.ErrorResponse "Пользователь не найден"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -290,6 +292,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 // @Tags auth
 // @Accept json
 // @Produce json
+// @Security     BearerAuth
 // @Param body body dto.ChangeEmailRequest true "Данные новой почты"
 // @Success 	200  {boolean} true
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
@@ -330,6 +333,7 @@ func (h *AuthHandler) ChangeMail(c *gin.Context) {
 // @Tags auth
 // @Accept json
 // @Produce json
+// @Security     BearerAuth
 // @Param body body dto.ChangeEmailRequest true "Старый и новый пароль"
 // @Success 	200  {boolean} true
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
@@ -382,6 +386,7 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 // @Description  Повторный ввод пароля, генерация токена удаления
 // @Tags         delete
 // @Produce      json
+// @Security     BearerAuth
 // @Success      200  {object} dto.OTPSentResponse "Подтвердите удаление"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/delete [post]

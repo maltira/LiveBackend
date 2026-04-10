@@ -5,6 +5,11 @@
 
 // @host 			localhost:8001
 // @BasePath 		/api
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Enter your Bearer token
 package main
 
 import (

@@ -61,6 +61,7 @@ func (h *RefreshHandler) Refresh(c *gin.Context) {
 // @Description  Заканчивает указанную сессию
 // @Tags         token
 // @Produce      json
+// @Security     BearerAuth
 // @Success      200  {boolean} true
 // @Param        token path string true "Refresh-токен сессии, которую нужно завершить"
 // @Failure      401  {object} dto.ErrorResponse "Неавторизован"
@@ -87,6 +88,7 @@ func (h *RefreshHandler) TerminateSession(c *gin.Context) {
 // @Description  Возвращает список всех устройств/браузеров, с которых пользователь сейчас залогинен (активные refresh-токены)
 // @Tags         token
 // @Produce      json
+// @Security     BearerAuth
 // @Success      200  {array} models.RefreshToken "Список сессий"
 // @Failure      401  {object} dto.ErrorResponse "Неавторизован"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"

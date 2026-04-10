@@ -54,7 +54,7 @@ func InitRouter() *gin.Engine {
 	}
 
 	protected := api.Group("")
-	protected.Use(middleware.AuthMiddleware())
+	protected.Use(middleware.AuthMiddleware(tRepo))
 	{
 		protected.GET("/me", aHandler.Me)
 		protected.GET("/sessions", tHandler.ListSessions)
