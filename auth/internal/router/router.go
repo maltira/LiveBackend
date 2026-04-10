@@ -27,22 +27,26 @@ func InitRouter() *gin.Engine {
 	r.ForwardedByClientIP = true
 	api := r.Group("/api/auth")
 
-	sensitive := api.Group("")
-	sensitive.Use(middleware.RateLimiterMiddleware(rdb, "30-M", "auth:limiter:auth:"))
+	public := api.Group("")
+	public.Use(middleware.RateLimiterMiddleware(rdb, "30-M", "auth:limiter:auth:"))
 	{
-		sensitive.POST("/register", authHandler.Register)
-		sensitive.POST("/login", authHandler.Login)
-		sensitive.POST("/verify", otpHandler.VerifyOTP)
-		sensitive.POST("/resend", otpHandler.ResendOTP)
-		sensitive.POST("/refresh", refreshHandler.Refresh)
+		public.POST("/register", authHandler.Register)
+		public.POST("/login", authHandler.Login)
+		public.POST("/verify", otpHandler.VerifyOTP)
+		public.POST("/resend", otpHandler.ResendOTP)
+		public.POST("/refresh", refreshHandler.Refresh)
+
+		public.POST("/logout", authHandler.LogoutCurrent)
+
+		public.POST("/verify-email/:token", authHandler.VerifyEmail)
 	}
 
-	resetGroup := api.Group("")
-	resetGroup.Use(middleware.RateLimiterMiddleware(rdb, "3-H", "auth:limiter:reset:"))
+	reset := api.Group("")
+	reset.Use(middleware.RateLimiterMiddleware(rdb, "3-H", "auth:limiter:reset:"))
 	{
-		resetGroup.POST("/forgot-password", authHandler.ForgotPassword)
-		resetGroup.POST("/reset-password", authHandler.ResetPassword)
-		resetGroup.PUT("/recovery/:id", middleware.ValidateUUID(), authHandler.RecoveryAccount)
+		reset.POST("/forgot-password", authHandler.ForgotPassword)
+		reset.POST("/reset-password", authHandler.ResetPassword)
+		reset.PUT("/recovery/:id", middleware.ValidateUUID(), authHandler.RecoveryAccount)
 	}
 
 	protected := api.Group("")
@@ -56,7 +60,6 @@ func InitRouter() *gin.Engine {
 
 		protected.POST("/delete/:email", authHandler.Delete)
 
-		protected.POST("/logout", authHandler.LogoutCurrent)
 		protected.POST("/logout/all", authHandler.LogoutAll)
 		protected.DELETE("/logout/:token", refreshHandler.TerminateSession)
 	}

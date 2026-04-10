@@ -2,6 +2,7 @@ package repository
 
 import (
 	"auth/internal/models"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -11,7 +12,10 @@ import (
 type AuthRepository interface {
 	FindByEmail(email string) (*models.User, error)
 	FindByID(id uuid.UUID) (*models.User, error)
-	CreateUser(user *models.User) error
+
+	CreateUser(email, password string) (*models.User, error)
+	VerifyNewUser(user *models.User) error
+
 	DeleteUser(id uuid.UUID, isSoft bool) error
 	ScheduleDeletion(userID uuid.UUID, deletionTime time.Time) error
 	CancelDeletion(userID uuid.UUID) error
@@ -26,7 +30,7 @@ type AuthRepository interface {
 	CreateOTP(otp *models.OTPCode) error
 	FindValidOTP(userID uuid.UUID, code string) (*models.OTPCode, error)
 	MarkOTPAsUsed(id uuid.UUID) error
-	InvalidateAllActiveOTPs(userID uuid.UUID) error
+	InvalidateAllOTPs(userID uuid.UUID) error
 }
 type authRepository struct {
 	db *gorm.DB
@@ -40,10 +44,12 @@ func NewAuthRepository(db *gorm.DB) AuthRepository {
 
 func (r *authRepository) FindByEmail(email string) (*models.User, error) {
 	var user models.User
-	err := r.db.First(&user, "email = ?", email).Error
+
+	err := r.db.Where("email = ?", email).First(&user).Error
 	if err != nil {
 		return nil, err
 	}
+
 	return &user, nil
 }
 
@@ -56,8 +62,28 @@ func (r *authRepository) FindByID(id uuid.UUID) (*models.User, error) {
 	return &user, nil
 }
 
-func (r *authRepository) CreateUser(user *models.User) error {
-	return r.db.Create(user).Error
+func (r *authRepository) CreateUser(email, password string) (*models.User, error) {
+	var user *models.User
+	result := r.db.
+		Where(models.User{Email: email}).
+		Attrs(models.User{Password: password}).
+		FirstOrCreate(&user)
+
+	if result.RowsAffected == 0 {
+		if !user.IsVerified {
+			user.Password = password
+			if err := r.db.Save(&user).Error; err != nil {
+				return user, err
+			}
+		} else {
+			return user, errors.New("email already exists")
+		}
+	}
+	return user, result.Error
+}
+
+func (r *authRepository) VerifyNewUser(user *models.User) error {
+	return r.db.Save(&user).Error
 }
 
 func (r *authRepository) DeleteUser(id uuid.UUID, isSoft bool) error {
@@ -154,8 +180,6 @@ func (r *authRepository) MarkOTPAsUsed(id uuid.UUID) error {
 		Update("is_used", true).Error
 }
 
-func (r *authRepository) InvalidateAllActiveOTPs(userID uuid.UUID) error {
-	return r.db.Model(&models.OTPCode{}).
-		Where("user_id = ? AND is_used = false AND expires_at > ?", userID, time.Now()).
-		Update("is_used", true).Error
+func (r *authRepository) InvalidateAllOTPs(userID uuid.UUID) error {
+	return r.db.Where("user_id = ?", userID).Delete(&models.OTPCode{}).Error
 }

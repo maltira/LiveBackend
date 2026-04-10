@@ -5,9 +5,7 @@ import (
 	"auth/internal/dto"
 	"auth/internal/models"
 	"auth/internal/service"
-	"auth/pkg/rabbitmq"
 	"auth/pkg/utils"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -76,8 +74,6 @@ func (h *OtpHandler) VerifyOTP(c *gin.Context) {
 	switch req.Action {
 	case "login":
 		h.handleLoginAction(c, user)
-	case "register":
-		h.handleRegisterAction(c, user)
 	case "change-mail":
 		h.handleChangeMailAction(c, user, req.Email)
 	case "change-pass":
@@ -117,7 +113,7 @@ func (h *OtpHandler) ResendOTP(c *gin.Context) {
 		return
 	}
 
-	_, _, err = h.sc.SendOTP(userID, email)
+	err = h.sc.SendOTP(userID, email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP-кода: " + err.Error()})
 		return
@@ -145,35 +141,15 @@ func (h *OtpHandler) handleLoginAction(c *gin.Context, user *models.User) {
 	ip := c.ClientIP()
 	userAgent := c.Request.UserAgent()
 	device := utils.ParseDeviceInfo(userAgent)
-
 	access, refresh, _ := h.sc.GenerateTokens(user.ID, ip, userAgent, device)
-	utils.SetAuthCookies(c, access, refresh)
 
-	c.JSON(http.StatusOK, true)
-}
+	utils.SetAuthCookies(c, refresh)
 
-func (h *OtpHandler) handleRegisterAction(c *gin.Context, user *models.User) {
-	user.IsVerified = true
-	err := h.sc.UpdateUser(user)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка верификации: " + err.Error()})
-		return
-	}
-
-	ip := c.ClientIP()
-	userAgent := c.Request.UserAgent()
-	device := utils.ParseDeviceInfo(userAgent)
-
-	access, refresh, _ := h.sc.GenerateTokens(user.ID, ip, userAgent, device)
-	utils.SetAuthCookies(c, access, refresh)
-
-	// событие в очередь
-	payload := map[string]interface{}{"user_id": user.ID, "action": "user_created"}
-	if data, err := json.Marshal(payload); err == nil {
-		_ = rabbitmq.Publish("user.events", data)
-	}
-
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.LoginResponse{
+		UserID:      user.ID,
+		Email:       user.Email,
+		AccessToken: access,
+	})
 }
 
 func (h *OtpHandler) handleChangeMailAction(c *gin.Context, user *models.User, email *string) {

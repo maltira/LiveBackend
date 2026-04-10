@@ -13,7 +13,6 @@ type Config struct {
 	DBPort     string
 	DBUser     string
 	DBPassword string
-	DBSSLMode  string
 	DBName     string
 
 	AppPort      string
@@ -24,10 +23,8 @@ type Config struct {
 var Env *Config
 
 func InitEnv() {
-	if err := godotenv.Load("../.env"); err != nil {
-		if err = godotenv.Load(".env"); err != nil {
-			panic(".env file not found")
-		}
+	if err := godotenv.Load(".env"); err != nil {
+		panic(".env file not found")
 	}
 
 	Env = &Config{
@@ -37,7 +34,6 @@ func InitEnv() {
 		DBPort:     os.Getenv("DB_PORT"),
 		DBUser:     os.Getenv("DB_USER"),
 		DBPassword: os.Getenv("DB_PASSWORD"),
-		DBSSLMode:  os.Getenv("DB_SSLMODE"),
 		DBName:     os.Getenv("DB_CHAT_NAME"),
 
 		AppPort:      os.Getenv("PORT_CHAT"),

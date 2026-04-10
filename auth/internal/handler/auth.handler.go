@@ -4,8 +4,11 @@ import (
 	"auth/config"
 	"auth/internal/dto"
 	"auth/internal/service"
+	"auth/pkg/rabbitmq"
 	"auth/pkg/utils"
+	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -24,12 +27,12 @@ func NewAuthHandler(sc service.AuthService) *AuthHandler {
 
 // Register
 // @Summary Регистрация нового пользователя
-// @Description Создаёт нового пользователя с указанным email и паролем. После успешной регистрации отправляется OTP-код
+// @Description Создаёт нового пользователя с указанным email и паролем
 // @Tags auth
 // @Accept json
 // @Produce json
 // @Param body body dto.AuthRequest true "Данные для регистрации"
-// @Success 	200  {object} dto.OTPSentResponse "Подтвердите регистрацию"
+// @Success 	200  {boolean} true "Подтвердите аккаунт по ссылке на почте"
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure     409  {object} dto.ErrorResponse "Пользователь с таким email уже существует"
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -41,8 +44,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// Создаём пользователя
-	id, err := h.sc.Register(req.Email, req.Password)
+	err := h.sc.Register(req.Email, req.Password)
 	if err != nil {
 		if err.Error() == "email already exists" {
 			c.JSON(http.StatusConflict, dto.ErrorResponse{Code: 409, Error: "Пользователь с такой почтой уже существует"})
@@ -52,17 +54,40 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// Отправляем OTP
-	_, _, err = h.sc.SendOTP(id, req.Email)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
+	c.JSON(http.StatusOK, true)
+}
+
+// VerifyEmail
+// @Summary Верификация нового аккаунта
+// @Description Активирует новый аккаунт, после верификации нужно выполнить вход повторно
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param		id path string true "Токен верификации"
+// @Success 	200  {boolean} true
+// @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
+// @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
+// @Router      /auth/verify-email/{token} [post]
+func (h *AuthHandler) VerifyEmail(c *gin.Context) {
+	token := c.Param("token")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
 	}
 
-	c.JSON(http.StatusOK, dto.OTPSentResponse{
-		UserID:  id,
-		Message: "OTP-код отправлен на указанную почту",
-	})
+	user, err := h.sc.VerifyNewAccount(token)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		return
+	}
+
+	// событие в очередь
+	payload := map[string]interface{}{"user_id": user.ID, "action": "user_created"}
+	if data, err := json.Marshal(payload); err == nil {
+		_ = rabbitmq.Publish("user.events", data)
+	}
+
+	c.JSON(http.StatusOK, true)
 }
 
 // Login
@@ -72,7 +97,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        body body dto.AuthRequest true "Данные для входа"
-// @Success      200  {object} dto.OTPSentResponse "Подтвердите вход"
+// @Success      200  {boolean} true
 // @Failure      400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure      403  {object} dto.ErrorResponse "Неверный email или пароль"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -86,20 +111,25 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	id, err := h.sc.Login(req.Email, req.Password)
 	if err != nil {
-		c.JSON(http.StatusForbidden, dto.ErrorResponse{Code: 403, Error: config.IncorrectAuthError})
+		switch {
+		case err.Error() == "account is not verified":
+			c.JSON(http.StatusForbidden, dto.ErrorResponse{Code: 403, Error: config.NotVerifiedError})
+		case err.Error() == "invalid credentials":
+			c.JSON(http.StatusForbidden, dto.ErrorResponse{Code: 403, Error: config.IncorrectAuthError})
+		default:
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		}
 		return
 	}
 
-	_, _, err = h.sc.SendOTP(*id, req.Email)
+	err = h.sc.SendOTP(id, req.Email)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
-		return
+		log.Println("Ошибка генерации OTP:" + err.Error())
+		// не прерываемся, тк пользователь сможет переотправить код
 	}
 
-	c.JSON(http.StatusOK, dto.OTPSentResponse{
-		UserID:  *id,
-		Message: "OTP-код отправлен на указанную почту",
-	})
+	// отправляем на верификацию кода
+	c.JSON(http.StatusOK, true)
 }
 
 // ! Выход из профиля
@@ -122,8 +152,8 @@ func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
 	}
 
 	// Добавляем текущий access-токен в blacklist
-	accessToken, _ := c.Cookie("access_token")
-	_ = h.sc.BlacklistAccessToken(c, accessToken)
+	//accessToken, _ := c.Cookie("access_token")
+	//_ = h.sc.BlacklistAccessToken(c, accessToken)
 
 	utils.ClearAuthCookies(c)
 
@@ -192,7 +222,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	}
 
 	// Отправляем OTP
-	_, _, err = h.sc.SendOTP(user.ID, email)
+	err = h.sc.SendOTP(user.ID, email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
 		return
@@ -296,7 +326,7 @@ func (h *AuthHandler) ChangeMail(c *gin.Context) {
 		return
 	}
 
-	_, _, err = h.sc.SendOTP(user.ID, req.Email)
+	err = h.sc.SendOTP(user.ID, req.Email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
 		return
@@ -347,7 +377,7 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 		return
 	}
 
-	_, _, err = h.sc.SendOTP(user.ID, user.Email)
+	err = h.sc.SendOTP(user.ID, user.Email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
 		return
@@ -370,7 +400,7 @@ func (h *AuthHandler) Delete(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
 	email := c.Param("email")
 
-	_, _, err := h.sc.SendOTP(userID, email)
+	err := h.sc.SendOTP(userID, email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
 		return

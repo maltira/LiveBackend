@@ -8,4 +8,5 @@ const (
 	IncorrectUUIDError = "Некорректный формат UUID"
 	IncorrectAuthError = "Неверный email или пароль"
 	NotFoundError      = "Запись не найдена"
+	NotVerifiedError   = "Подтвердите указанную почту на этапе регистрации"
 )

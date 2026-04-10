@@ -37,7 +37,7 @@ func (h *RefreshHandler) Refresh(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: config.UnauthorizedError})
 		return
 	}
-	access, refresh, err := h.sc.Refresh(refreshToken)
+	_, refresh, err := h.sc.Refresh(refreshToken)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(404, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": refresh_token"})
@@ -47,7 +47,7 @@ func (h *RefreshHandler) Refresh(c *gin.Context) {
 		return
 	}
 
-	utils.SetAuthCookies(c, access, refresh)
+	utils.SetAuthCookies(c, refresh)
 
 	c.JSON(http.StatusOK, true)
 }

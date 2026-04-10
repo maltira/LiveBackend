@@ -54,6 +54,12 @@ type OTPSentResponse struct {
 	Message string    `json:"message"`
 }
 
+type LoginResponse struct {
+	UserID      uuid.UUID `json:"user_id"`
+	Email       string    `json:"email"`
+	AccessToken string    `json:"access_token"`
+}
+
 type TempTokenResponse struct {
 	UserID    uuid.UUID `json:"user_id"`
 	TempToken string    `json:"temp_token"`

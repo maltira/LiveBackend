@@ -20,6 +20,9 @@ type AuthConfig struct {
 	DBSSLMode  string
 	DBName     string
 
+	EmailUsername string
+	EmailPassword string
+
 	AppPort      string
 	RedisAddr    string
 	RabbitMQAddr string
@@ -28,10 +31,8 @@ type AuthConfig struct {
 var Env *AuthConfig
 
 func InitEnv() {
-	if err := godotenv.Load("../.env"); err != nil {
-		if err = godotenv.Load(".env"); err != nil {
-			panic(".env file not found")
-		}
+	if err := godotenv.Load(".env"); err != nil {
+		panic(".env file not found")
 	}
 
 	Env = &AuthConfig{
@@ -44,8 +45,10 @@ func InitEnv() {
 		DBPort:     os.Getenv("DB_PORT"),
 		DBUser:     os.Getenv("DB_USER"),
 		DBPassword: os.Getenv("DB_PASSWORD"),
-		DBSSLMode:  os.Getenv("DB_SSLMODE"),
 		DBName:     os.Getenv("DB_AUTH_NAME"),
+
+		EmailUsername: os.Getenv("EMAIL_USERNAME"),
+		EmailPassword: os.Getenv("EMAIL_PASSWORD"),
 
 		AppPort:      os.Getenv("PORT_AUTH"),
 		RedisAddr:    os.Getenv("REDIS_ADDR"),

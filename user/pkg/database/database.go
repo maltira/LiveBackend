@@ -15,13 +15,12 @@ var db *gorm.DB
 func InitDB() {
 	cfg := config.Env
 
-	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s",
+	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
 		cfg.DBHost,
 		cfg.DBUser,
 		cfg.DBPassword,
 		cfg.DBName,
 		cfg.DBPort,
-		cfg.DBSSLMode,
 	)
 
 	var err error

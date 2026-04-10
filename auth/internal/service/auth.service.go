@@ -2,12 +2,15 @@ package service
 
 import (
 	"auth/config"
+	smtp "auth/internal/email"
 	"auth/internal/models"
 	"auth/internal/repository"
 	"auth/pkg/redis"
 	"auth/pkg/utils"
+	"context"
 	"errors"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -18,8 +21,9 @@ import (
 )
 
 type AuthService interface {
-	Register(email, password string) (uuid.UUID, error)
-	Login(email, password string) (*uuid.UUID, error)
+	Register(email, password string) error
+	VerifyNewAccount(token string) (*models.User, error)
+	Login(email, password string) (uuid.UUID, error)
 	GetUserByID(id uuid.UUID) (*models.User, error)
 	GetUserByEmail(email string) (*models.User, error)
 	DeleteUserByID(id uuid.UUID) error
@@ -36,7 +40,7 @@ type AuthService interface {
 	ListActiveSessions(userID uuid.UUID) ([]models.RefreshToken, error)
 
 	MarkOTPAsUsed(id uuid.UUID) error
-	SendOTP(userID uuid.UUID, email string) (string, time.Time, error)
+	SendOTP(userID uuid.UUID, email string) error
 	FindValidOTP(userID uuid.UUID, code string) (*models.OTPCode, error)
 }
 type authService struct {
@@ -47,46 +51,76 @@ func NewAuthService(repo repository.AuthRepository) AuthService {
 	return &authService{repo: repo}
 }
 
-// ! User
+// ! ВХОД В АККАУНТ
 
-func (s *authService) Register(email, password string) (uuid.UUID, error) {
-	res, err := s.repo.FindByEmail(email)
-	if err == nil { // Такой пользователь есть
-		if !res.IsVerified {
-			delErr := s.repo.DeleteUser(res.ID, false)
-			if delErr != nil {
-				return uuid.Nil, errors.New("error deleting old unverified user")
-			}
-		} else {
-			return uuid.Nil, errors.New("email already exists")
-		}
-	}
+func (s *authService) Register(email, password string) error {
+	hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	user, err := s.repo.CreateUser(email, string(hash))
 	if err != nil {
-		return uuid.Nil, err
+		return err
 	}
 
-	user := models.User{Email: email, Password: string(hash)}
-	if err := s.repo.CreateUser(&user); err != nil {
-		return uuid.Nil, err
+	verificationToken := uuid.NewString()
+	fmt.Println("Отправляем письмо пользовтелю: ", user.ID)
+	err = redis.AuthRedis.Set(context.Background(), "verify:"+verificationToken, user.ID.String(), 15*time.Minute).Err()
+	if err != nil {
+		return err
 	}
 
-	return user.ID, nil
+	go func() {
+		err = smtp.SendVerificationEmail(email, verificationToken)
+		if err != nil {
+			log.Printf("Failed to send verification email to %s: %v", email, err)
+		}
+	}()
+
+	return nil
 }
 
-func (s *authService) Login(email, password string) (*uuid.UUID, error) {
-	user, err := s.repo.FindByEmail(email)
+func (s *authService) VerifyNewAccount(token string) (*models.User, error) {
+	id, err := redis.AuthRedis.Get(context.Background(), "verify:"+token).Result()
+	if err != nil {
+		return nil, fmt.Errorf("invalid or expired verification token")
+	}
+	fmt.Println("Получен id пользователя: ", id)
+	userID := uuid.MustParse(id)
+
+	user, err := s.GetUserByID(userID)
 	if err != nil {
 		return nil, err
 	}
+
+	if user.IsVerified {
+		return user, nil
+	}
+
+	user.IsVerified = true
+	if err = s.repo.VerifyNewUser(user); err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+func (s *authService) Login(email, password string) (uuid.UUID, error) {
+	user, err := s.repo.FindByEmail(email)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return uuid.Nil, errors.New("invalid credentials") // не говорим, что email не существует
+		}
+		return uuid.Nil, err
+	}
+
 	if !user.IsVerified {
-		return nil, errors.New("not verified")
+		return uuid.Nil, errors.New("account is not verified")
 	}
+
 	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)) != nil {
-		return nil, errors.New("invalid credentials")
+		return uuid.Nil, errors.New("invalid credentials")
 	}
-	return &user.ID, err
+
+	return user.ID, nil
 }
 
 func (s *authService) GetUserByID(id uuid.UUID) (*models.User, error) {
@@ -150,7 +184,7 @@ func (s *authService) GenerateTokens(userID uuid.UUID, ip, userAgent, device str
 	refreshToken := uuid.New().String()
 	expiresAt := now.Add(config.Env.RefreshTokenDuration)
 
-	if err := s.repo.CreateRefreshToken(refreshToken, userID, expiresAt, ip, userAgent, device); err != nil {
+	if err = s.repo.CreateRefreshToken(refreshToken, userID, expiresAt, ip, userAgent, device); err != nil {
 		return "", "", err
 	}
 
@@ -204,7 +238,7 @@ func (s *authService) ListActiveSessions(userID uuid.UUID) ([]models.RefreshToke
 
 // ! OTP
 
-func (s *authService) SendOTP(userID uuid.UUID, email string) (string, time.Time, error) {
+func (s *authService) SendOTP(userID uuid.UUID, email string) error {
 	code := utils.GenerateOTP()
 	expires := time.Now().Add(10 * time.Minute)
 
@@ -214,19 +248,25 @@ func (s *authService) SendOTP(userID uuid.UUID, email string) (string, time.Time
 		ExpiresAt: expires,
 	}
 
-	if err := s.repo.InvalidateAllActiveOTPs(userID); err != nil {
+	// инвалидируем прошлые коды, чтоб по ним нельзя было зайти
+	if err := s.repo.InvalidateAllOTPs(userID); err != nil {
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", time.Time{}, err
+			return err
 		}
 	}
 
 	if err := s.repo.CreateOTP(&otp); err != nil {
-		return "", time.Time{}, err
+		return err
 	}
 
-	fmt.Printf("\n*| email: %s\n*| otp code: %s\n*| expires at: %s\n\n", email, otp.Code, expires.Format("15:04:05"))
+	go func() {
+		err := smtp.SendOTP(email, code, expires.Format("15:04:05"))
+		if err != nil {
+			log.Printf("Failed to send OTP to %s: %v", email, err)
+		}
+	}()
 
-	return code, expires, nil
+	return nil
 }
 
 func (s *authService) FindValidOTP(userID uuid.UUID, code string) (*models.OTPCode, error) {
