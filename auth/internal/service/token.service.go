@@ -1,12 +1,12 @@
 package service
 
 import (
-	"auth/config"
 	"auth/internal/models"
 	"auth/internal/repository"
+	"auth/pkg/utils"
+	"errors"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
 
@@ -25,44 +25,36 @@ func NewTokenService(repo repository.TokenRepository) TokenService {
 	return &tokenService{repo: repo}
 }
 
-func (s *tokenService) GenerateTokens(userID uuid.UUID, ip, userAgent, device string) (string, string, error) {
-	now := time.Now()
-	// Access token
-	access := jwt.NewWithClaims(
-		jwt.SigningMethodHS256,
-		jwt.MapClaims{
-			"id":  userID,
-			"exp": now.Add(config.Env.AccessTokenDuration).Unix(),
-			"jti": uuid.New().String(), // id токена
-		},
-	)
-	accessToken, err := access.SignedString(config.Env.JWTSecret)
+func (s *tokenService) Refresh(refreshToken string) (string, string, error) {
+	rt, err := s.repo.FindRefreshToken(refreshToken)
+	if err != nil || time.Now().After(rt.ExpiresAt) {
+		return "", "", errors.New("invalid refresh token")
+	}
+	// Отзываем старый токен
+	_ = s.repo.Revoke(refreshToken)
+
+	// Создаём новые
+	access, newRefresh, err := s.GenerateTokens(rt.UserID, rt.IP, rt.UserAgent, rt.Device)
 	if err != nil {
 		return "", "", err
 	}
 
-	// Refresh token
-	refreshToken := uuid.New().String()
-	expiresAt := now.Add(config.Env.RefreshTokenDuration)
+	return access, newRefresh, nil
+}
 
-	if err = s.repo.CreateRefreshToken(refreshToken, userID, expiresAt, ip, userAgent, device); err != nil {
+func (s *tokenService) GenerateTokens(userID uuid.UUID, ip, userAgent, device string) (string, string, error) {
+	refreshToken, expiresAt := utils.GenerateRefreshTokenString()
+
+	accessToken, err := utils.GenerateAccessToken(userID)
+	if err != nil {
+		return "", "", err
+	}
+
+	if err = s.repo.SaveRefreshToken(refreshToken, userID, expiresAt, ip, userAgent, device); err != nil {
 		return "", "", err
 	}
 
 	return accessToken, refreshToken, nil
-}
-
-func (s *tokenService) Refresh(refreshToken string) (string, string, error) {
-	rt, err := s.repo.FindValidByToken(refreshToken)
-	if err != nil {
-		return "", "", err
-	}
-
-	// Отзываем старый
-	_ = s.repo.Revoke(refreshToken)
-
-	access, newRefresh, err := s.GenerateTokens(rt.UserID, rt.IP, rt.UserAgent, rt.Device)
-	return access, newRefresh, err
 }
 
 func (s *tokenService) RevokeRefreshToken(refreshToken string) error {

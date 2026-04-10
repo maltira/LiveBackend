@@ -15,3 +15,8 @@ type SessionResponse struct {
 	CreatedAt    time.Time `json:"created_at" example:"2026-01-16T09:17:00Z"`
 	ExpiresAt    time.Time `json:"expires_at" example:"2026-02-16T09:17:00Z"`
 }
+
+type TokenResponse struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+}

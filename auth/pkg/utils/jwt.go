@@ -49,3 +49,20 @@ func ParseToken(tokenString string) (*jwt.Token, error) {
 		return config.Env.JWTSecret, nil
 	})
 }
+
+func GenerateRefreshTokenString() (string, time.Time) {
+	refreshToken := uuid.NewString()
+	expiresAt := time.Now().Add(config.Env.RefreshTokenDuration)
+	return refreshToken, expiresAt
+}
+
+func GenerateAccessToken(userID uuid.UUID) (string, error) {
+	access := jwt.NewWithClaims(
+		jwt.SigningMethodHS256,
+		jwt.MapClaims{
+			"id":  userID,
+			"exp": time.Now().Add(config.Env.AccessTokenDuration).Unix(),
+		},
+	)
+	return access.SignedString(config.Env.JWTSecret)
+}

@@ -9,8 +9,8 @@ import (
 )
 
 type TokenRepository interface {
-	CreateRefreshToken(token string, userID uuid.UUID, expiresAt time.Time, ip, userAgent, device string) error
-	FindValidByToken(token string) (*models.RefreshToken, error)
+	SaveRefreshToken(token string, userID uuid.UUID, expiresAt time.Time, ip, userAgent, device string) error
+	FindRefreshToken(token string) (*models.RefreshToken, error)
 	Revoke(token string) error
 	RevokeAll(userID uuid.UUID, excludeToken *string) error
 	ListActiveSessions(userID uuid.UUID) ([]models.RefreshToken, error)
@@ -23,7 +23,7 @@ func NewTokenRepository(db *gorm.DB) TokenRepository {
 	return &tokenRepository{db: db}
 }
 
-func (r *tokenRepository) CreateRefreshToken(token string, userID uuid.UUID, expiresAt time.Time, ip, userAgent, device string) error {
+func (r *tokenRepository) SaveRefreshToken(token string, userID uuid.UUID, expiresAt time.Time, ip, userAgent, device string) error {
 	rt := models.RefreshToken{
 		Token:     token,
 		UserID:    userID,
@@ -35,16 +35,13 @@ func (r *tokenRepository) CreateRefreshToken(token string, userID uuid.UUID, exp
 	return r.db.Create(&rt).Error
 }
 
-func (r *tokenRepository) FindValidByToken(token string) (*models.RefreshToken, error) {
-	var rt models.RefreshToken
-	err := r.db.
-		Where("token = ? AND expires_at > ?", token, time.Now()).
-		First(&rt).Error
-	if err != nil {
+func (r *tokenRepository) FindRefreshToken(token string) (*models.RefreshToken, error) {
+	var rt *models.RefreshToken
+	if err := r.db.Where("token = ?", token).First(&rt).Error; err != nil {
 		return nil, err
 	}
 
-	return &rt, nil
+	return rt, nil
 }
 
 func (r *tokenRepository) Revoke(token string) error {
