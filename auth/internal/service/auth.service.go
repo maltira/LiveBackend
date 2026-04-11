@@ -1,14 +1,17 @@
 package service
 
 import (
+	"auth/config"
 	smtp "auth/internal/email"
 	"auth/internal/models"
 	"auth/internal/repository"
 	"auth/pkg/redis"
+	"auth/pkg/utils"
 	"context"
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -20,20 +23,21 @@ type AuthService interface {
 	Register(email, password string) error
 	VerifyNewAccount(token string) (*models.User, error)
 	Login(email, password string) (uuid.UUID, error)
-	GetUserByID(id uuid.UUID) (*models.User, error)
-	GetUserByEmail(email string) (*models.User, error)
+	FindByID(id uuid.UUID) (*models.User, error)
+	FindByEmail(email string) (*models.User, error)
 	DeleteUserByID(id uuid.UUID) error
 	UpdateUser(user *models.User) error
-	UpdatePassword(userID uuid.UUID, newPassword string) error
+	ResetPassword(token, newPassword string) error
 	ScheduleDeletion(userID uuid.UUID, deletionTime time.Time) error
 	CancelDeletion(userID uuid.UUID) error
 }
 type authService struct {
-	repo repository.AuthRepository
+	repo  repository.AuthRepository
+	tRepo repository.TokenRepository
 }
 
-func NewAuthService(repo repository.AuthRepository) AuthService {
-	return &authService{repo: repo}
+func NewAuthService(repo repository.AuthRepository, tRepo repository.TokenRepository) AuthService {
+	return &authService{repo: repo, tRepo: tRepo}
 }
 
 // ! ВХОД В АККАУНТ
@@ -54,7 +58,8 @@ func (s *authService) Register(email, password string) error {
 	}
 
 	go func() {
-		err = smtp.SendVerificationEmail(email, verificationToken)
+		verifyURL := fmt.Sprintf("%s/verify-email?token=%s", config.Env.FrontendURL, verificationToken)
+		err = smtp.SendVerificationEmail(email, verifyURL)
 		if err != nil {
 			log.Printf("Failed to send verification email to %s: %v", email, err)
 		}
@@ -71,7 +76,7 @@ func (s *authService) VerifyNewAccount(token string) (*models.User, error) {
 	fmt.Println("Получен id пользователя: ", id)
 	userID := uuid.MustParse(id)
 
-	user, err := s.GetUserByID(userID)
+	user, err := s.FindByID(userID)
 	if err != nil {
 		return nil, err
 	}
@@ -110,11 +115,11 @@ func (s *authService) Login(email, password string) (uuid.UUID, error) {
 
 // ! ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ
 
-func (s *authService) GetUserByID(id uuid.UUID) (*models.User, error) {
+func (s *authService) FindByID(id uuid.UUID) (*models.User, error) {
 	return s.repo.FindByID(id)
 }
 
-func (s *authService) GetUserByEmail(email string) (*models.User, error) {
+func (s *authService) FindByEmail(email string) (*models.User, error) {
 	return s.repo.FindByEmail(email)
 }
 
@@ -128,19 +133,52 @@ func (s *authService) UpdateUser(user *models.User) error {
 	return s.repo.UpdateUser(user)
 }
 
-func (s *authService) UpdatePassword(userID uuid.UUID, newPassword string) error {
+func (s *authService) ResetPassword(token, newPassword string) error {
+	ctx := context.Background()
+
+	// Получаем все ключи reset:password:*
+	keys, err := redis.AuthRedis.Keys(ctx, "reset:password:*").Result()
+	if err != nil {
+		return err
+	}
+
+	var userID uuid.UUID
+	for _, key := range keys {
+		hashedToken, _ := redis.AuthRedis.Get(ctx, key).Result()
+		if utils.CompareToken(token, hashedToken) {
+			userIDStr := strings.TrimPrefix(key, "reset:password:")
+			userID = uuid.MustParse(userIDStr)
+			break
+		}
+	}
+
+	if userID == uuid.Nil {
+		return errors.New("invalid or expired token")
+	}
+
+	// ищем пользователя и меняем пароль
 	user, err := s.repo.FindByID(userID)
 	if err != nil {
 		return err
 	}
 
-	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(newPassword)) == nil {
-		return errors.New("пароли не должны совпадать")
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
 	}
-	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-	user.Password = string(hash)
 
-	return s.repo.UpdateUser(user)
+	user.Password = string(hashedPassword)
+	if err = s.repo.UpdateUser(user); err != nil {
+		return err
+	}
+
+	// Удаляем использованный токен
+	redis.AuthRedis.Del(ctx, "reset:password:"+userID.String())
+
+	// Отзываем все refresh-токены пользователя
+	_ = s.tRepo.RevokeAll(user.ID, nil)
+
+	return nil
 }
 
 func (s *authService) ScheduleDeletion(userID uuid.UUID, deletionTime time.Time) error {

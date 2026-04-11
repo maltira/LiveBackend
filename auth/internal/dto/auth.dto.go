@@ -21,9 +21,12 @@ type VerifyOTPRequest struct {
 	Action   string    `json:"action" binding:"required"`
 }
 
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
+}
 type ResetPasswordRequest struct {
-	UserID      uuid.UUID `json:"user_id" binding:"required"`
-	NewPassword string    `json:"new_password" binding:"required,min=8"`
+	Token       string `json:"token"`
+	NewPassword string `json:"new_password" binding:"required,min=8"`
 }
 
 type TempTokenRequest struct {

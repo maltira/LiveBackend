@@ -12,6 +12,9 @@ type AuthConfig struct {
 	JWTSecret            []byte
 	AccessTokenDuration  time.Duration
 	RefreshTokenDuration time.Duration
+	PassTokenDuration    time.Duration
+
+	FrontendURL string
 
 	DBHost     string
 	DBPort     string
@@ -40,6 +43,9 @@ func InitEnv() {
 
 		AccessTokenDuration:  getDuration("JWT_ACCESS_DURATION", 15*time.Minute),
 		RefreshTokenDuration: getDuration("JWT_REFRESH_DURATION", 30*24*time.Hour),
+		PassTokenDuration:    getDuration("PASS_TOKEN_DURATION", 15*time.Minute),
+
+		FrontendURL: os.Getenv("FRONTEND_URL"),
 
 		DBHost:     os.Getenv("DB_HOST"),
 		DBPort:     os.Getenv("DB_PORT"),

@@ -20,7 +20,7 @@ func InitRouter() *gin.Engine {
 	aRepo := repository.NewAuthRepository(authdb.GetDB())
 	oRepo := repository.NewOtpRepository(authdb.GetDB())
 	tRepo := repository.NewTokenRepository(authdb.GetDB())
-	aSc := service.NewAuthService(aRepo)
+	aSc := service.NewAuthService(aRepo, tRepo)
 	oSc := service.NewOtpService(oRepo)
 	tSc := service.NewTokenService(tRepo)
 	aHandler := handler.NewAuthHandler(aSc, oSc, tSc)

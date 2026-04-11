@@ -32,14 +32,14 @@ func NewAuthRepository(db *gorm.DB) AuthRepository {
 // ! User
 
 func (r *authRepository) FindByEmail(email string) (*models.User, error) {
-	var user models.User
+	var user *models.User
 
 	err := r.db.Where("email = ?", email).First(&user).Error
 	if err != nil {
 		return nil, err
 	}
 
-	return &user, nil
+	return user, nil
 }
 
 func (r *authRepository) FindByID(id uuid.UUID) (*models.User, error) {

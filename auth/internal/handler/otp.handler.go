@@ -60,7 +60,7 @@ func (h *OtpHandler) VerifyOTP(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка отметки OTP: " + err.Error()})
 	}
 
-	user, err := h.asc.GetUserByID(req.UserID)
+	user, err := h.asc.FindByID(req.UserID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
