@@ -12,9 +12,8 @@ import (
 )
 
 func StartUserEventsConsumer(db *gorm.DB) {
-	tx := db.Begin()
-
 	err := rabbitmq.Consume("user.events", func(body []byte) {
+		tx := db.Begin()
 		var event struct {
 			UserID string `json:"user_id"`
 			Action string `json:"action"`

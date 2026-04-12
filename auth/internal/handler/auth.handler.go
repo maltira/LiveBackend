@@ -5,11 +5,9 @@ import (
 	"auth/internal/dto"
 	smtp "auth/internal/email"
 	"auth/internal/service"
-	"auth/pkg/rabbitmq"
 	"auth/pkg/redis"
 	"auth/pkg/utils"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -81,18 +79,23 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 		return
 	}
 
-	user, err := h.asc.VerifyNewAccount(token)
+	// ДОБАВИТЬ ТРАНЗАКЦИЮ
+	user, tx, err := h.asc.VerifyNewAccount(token)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
 
 	// событие в очередь
-	payload := map[string]interface{}{"user_id": user.ID, "action": "user_created"}
-	if data, err := json.Marshal(payload); err == nil {
-		_ = rabbitmq.Publish("user.events", data)
+	err = utils.SendRequestCreateProfile(user.ID)
+	if err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		return
 	}
 
+	// ЗАКРЫТЬ ТРАНЗАКЦИЮ
+	tx.Commit()
 	c.JSON(http.StatusOK, true)
 }
 

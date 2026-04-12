@@ -21,7 +21,7 @@ import (
 
 type AuthService interface {
 	Register(email, password string) error
-	VerifyNewAccount(token string) (*models.User, error)
+	VerifyNewAccount(token string) (*models.User, *gorm.DB, error)
 	Login(email, password string) (uuid.UUID, error)
 	FindByID(id uuid.UUID) (*models.User, error)
 	FindByEmail(email string) (*models.User, error)
@@ -67,29 +67,29 @@ func (s *authService) Register(email, password string) error {
 	return nil
 }
 
-func (s *authService) VerifyNewAccount(token string) (*models.User, error) {
+func (s *authService) VerifyNewAccount(token string) (*models.User, *gorm.DB, error) {
 	id, err := redis.AuthRedis.Get(context.Background(), "verify:"+token).Result()
 	if err != nil {
-		return nil, fmt.Errorf("invalid or expired verification token")
+		return nil, nil, fmt.Errorf("invalid or expired verification token")
 	}
-	fmt.Println("Получен id пользователя: ", id)
 	userID := uuid.MustParse(id)
 
 	user, err := s.FindByID(userID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	if user.IsVerified {
-		return user, nil
+		return user, nil, nil
 	}
 
 	user.IsVerified = true
-	if err = s.repo.VerifyNewUser(user); err != nil {
-		return nil, err
+	tx, err := s.repo.VerifyNewUser(user)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	return user, nil
+	return user, tx, nil
 }
 
 func (s *authService) Login(email, password string) (uuid.UUID, error) {

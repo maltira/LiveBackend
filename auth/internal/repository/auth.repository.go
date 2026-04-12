@@ -14,7 +14,7 @@ type AuthRepository interface {
 	FindByID(id uuid.UUID) (*models.User, error)
 
 	CreateUser(email, password string) (*models.User, error)
-	VerifyNewUser(user *models.User) error
+	VerifyNewUser(user *models.User) (*gorm.DB, error)
 
 	SoftDeleteUserByID(id uuid.UUID, email, reason, deletedBy string) error
 	UpdateUser(user *models.User) error
@@ -69,8 +69,14 @@ func (r *authRepository) CreateUser(email, password string) (*models.User, error
 	return user, result.Error
 }
 
-func (r *authRepository) VerifyNewUser(user *models.User) error {
-	return r.db.Save(&user).Error
+func (r *authRepository) VerifyNewUser(user *models.User) (*gorm.DB, error) {
+	tx := r.db.Begin()
+
+	if err := tx.Save(&user).Error; err != nil {
+		tx.Rollback()
+		return nil, err
+	}
+	return tx, nil
 }
 
 func (r *authRepository) SoftDeleteUserByID(id uuid.UUID, email, reason, deletedBy string) error {

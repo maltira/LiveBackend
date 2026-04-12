@@ -21,6 +21,25 @@ func NewProfileHandler(sc service.ProfileService) *ProfileHandler {
 	return &ProfileHandler{sc: sc}
 }
 
+func (h *ProfileHandler) CreateProfile(c *gin.Context) {
+	var req struct {
+		UserID string `json:"user_id"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: err.Error()})
+		return
+	}
+	userID := uuid.MustParse(req.UserID)
+
+	err := h.sc.Create(userID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, true)
+}
+
 // GetProfile
 // @Summary      Получить профиль текущего пользователя
 // @Description  Возвращает полный профиль авторизованного пользователя (username, full_name, bio, avatar_url и т.д.)
