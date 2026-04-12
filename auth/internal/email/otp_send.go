@@ -23,7 +23,7 @@ func init() {
 	otpTmpl = tmpl
 }
 
-func SendOTP(toEmail, code string, exp string) error {
+func SendOTPEmail(toEmail, code string, exp string) error {
 	user := config.Env.EmailUsername
 	pass := config.Env.EmailPassword
 

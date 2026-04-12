@@ -84,5 +84,5 @@ func (r *authRepository) SoftDeleteUserByID(id uuid.UUID, email, reason, deleted
 }
 
 func (r *authRepository) UpdateUser(user *models.User) error {
-	return r.db.Save(user).Error
+	return r.db.Save(&user).Error
 }

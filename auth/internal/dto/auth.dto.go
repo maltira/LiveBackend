@@ -8,7 +8,7 @@ import (
 
 type AuthRequest struct {
 	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
+	Password string `json:"password" binding:"required,min=8"`
 }
 
 type VerifyLoginOTPRequest struct {
@@ -21,6 +21,17 @@ type VerifyDeleteOTPRequest struct {
 	Code   string    `json:"code" binding:"required,len=6"`
 	Reason string    `json:"reason" binding:"max=255"`
 }
+type VerifyChangeEmailRequest struct {
+	UserID   uuid.UUID `json:"user_id" binding:"required"`
+	Code     string    `json:"code" binding:"required,len=6"`
+	NewEmail string    `json:"new_email" binding:"required,email"`
+}
+
+type VerifyChangePassRequest struct {
+	UserID      uuid.UUID `json:"user_id" binding:"required"`
+	Code        string    `json:"code" binding:"required,len=6"`
+	NewPassword string    `json:"new_password" binding:"required,min=8"`
+}
 
 type ForgotPasswordRequest struct {
 	Email string `json:"email" binding:"required,email"`
@@ -31,8 +42,13 @@ type ResetPasswordRequest struct {
 	NewPassword string `json:"new_password" binding:"required,min=8"`
 }
 
+type SendOTPRequest struct {
+	UserID uuid.UUID `json:"user_id" binding:"required"`
+	Email  string    `json:"email" binding:"required,email"`
+}
+
 type ChangeEmailRequest struct {
-	Email string `json:"email" binding:"required,email"`
+	NewEmail string `json:"new_email" binding:"required,email"`
 }
 type ChangePasswordRequest struct {
 	Password    string `json:"password" binding:"required,min=8"`

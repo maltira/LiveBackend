@@ -33,26 +33,33 @@ func InitRouter() *gin.Engine {
 
 	public := api.Group("")
 	public.Use(middleware.RateLimiterMiddleware(rdb, "30-M", "auth:limiter:auth:"))
+	login := public.Group("/login")
+	register := public.Group("/register")
+
+	otp := api.Group("/otp")
+	otp.Use(middleware.RateLimiterMiddleware(rdb, "5-M", "auth:limiter:otp:"))
+
 	{
-		public.POST("/register", aHandler.Register)
-		public.POST("/login", aHandler.Login)
-		public.POST("/resend", oHandler.ResendOTP)
+		{
+			register.POST("", aHandler.Register)
+			register.POST("/verify", aHandler.VerifyEmail)
+		}
+		{
+			login.POST("", aHandler.Login)
+			login.POST("/verify", oHandler.VerifyLoginOTP)
+		}
+		{
+			otp.POST("/send", oHandler.SendOTP)
+		}
+
 		public.POST("/refresh", tHandler.Refresh)
-
-		public.POST("/verify/login", oHandler.VerifyLoginOTP)
-		// public.POST("/verify/email-change", oHandler.VerifyOTP)
-		// public.POST("/verify/pass-change", oHandler.VerifyOTP)
-
-		public.POST("/logout", aHandler.LogoutCurrent)
-
-		public.POST("/verify-email", aHandler.VerifyEmail)
 	}
 
 	reset := api.Group("")
-	reset.Use(middleware.RateLimiterMiddleware(rdb, "3-H", "auth:limiter:reset:"))
+	reset.Use(middleware.RateLimiterMiddleware(rdb, "5-H", "auth:limiter:reset:"))
 	{
 		// Восстановление пароля
-		reset.POST("/request/forgot-password", aHandler.ForgotPassword)
+		reset.POST("/forgot-password", aHandler.ForgotPassword)
 		reset.POST("/reset-password", aHandler.ResetPassword)
 	}
 
@@ -60,14 +67,15 @@ func InitRouter() *gin.Engine {
 	protected.Use(middleware.AuthMiddleware(tRepo))
 	{
 		protected.GET("/me", aHandler.Me)
+		public.POST("/delete-account", oHandler.VerifyDeleteAccountOTP)
+
+		protected.POST("/change/pass", aHandler.ChangePass)
+		protected.POST("/change/pass/verify", oHandler.VerifyChangePasswordOTP)
+		protected.POST("/change/email", aHandler.ChangeEmail)
+		protected.POST("/change/email/verify", oHandler.VerifyChangeMailOTP)
+
 		protected.GET("/sessions", tHandler.ListSessions)
-
-		protected.POST("/change-mail", aHandler.ChangeMail)
-		protected.POST("/change-pass", aHandler.ChangePass)
-
-		protected.POST("/delete-account", aHandler.DeleteAccount)
-		public.POST("/verify/del-account", oHandler.VerifyDeleteAccountOTP)
-
+		protected.POST("/logout", aHandler.LogoutCurrent)
 		protected.POST("/logout/all", aHandler.LogoutAll)
 		protected.DELETE("/logout/:token", tHandler.TerminateSession)
 	}

@@ -48,7 +48,7 @@ func (s *otpService) SendOTP(userID uuid.UUID, email string) error {
 	}
 
 	go func() {
-		err := smtp.SendOTP(email, code, expires.Format("15:04:05"))
+		err := smtp.SendOTPEmail(email, code, expires.Format("15:04:05"))
 		if err != nil {
 			log.Printf("Failed to send OTP to %s: %v", email, err)
 		}

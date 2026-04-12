@@ -73,7 +73,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 // @Success 	200  {boolean} true
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router      /auth/verify-email [post]
+// @Router      /auth/register/verify [post]
 func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {
@@ -146,6 +146,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Description  Завершает текущую сессию пользователя, отзывает токены и очищает cookie.
 // @Tags         logout
 // @Produce      json
+// @Security	 BearerAuth
 // @Success      200  {boolean} true
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/logout [post]
@@ -195,7 +196,7 @@ func (h *AuthHandler) LogoutAll(c *gin.Context) {
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      403  {object} dto.ErrorResponse "Аккаунт на стадии удаления"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/request/forgot-password [post]
+// @Router       /auth/forgot-password [post]
 func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	var req dto.ForgotPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -207,15 +208,8 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	}
 
 	user, err := h.asc.FindByEmail(req.Email)
-	if err != nil {
+	if err != nil || user.DeletedAt != nil {
 		c.JSON(http.StatusOK, true)
-		return
-	}
-	if user.DeletedAt != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
-			Code:  403,
-			Error: "Аккаунт находится на стадии удаления, невозможно изменить пароль",
-		})
 		return
 	}
 
@@ -298,7 +292,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	c.JSON(http.StatusOK, true)
 }
 
-// ! Информация для пользователя
+// ! Информация о пользователе
 
 // Me
 // @Summary      Получить информацию о текущем пользователе
@@ -326,46 +320,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 	c.JSON(http.StatusOK, user)
 }
 
-// ChangeMail
-// @Summary Смена почты
-// @Description Позволяет изменить старую почту на новую
-// @Tags auth
-// @Accept json
-// @Produce json
-// @Security     BearerAuth
-// @Param body body dto.ChangeEmailRequest true "Данные новой почты"
-// @Success 	200  {boolean} true
-// @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
-// @Failure     404  {object} dto.ErrorResponse "Запись не найдена"
-// @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router      /auth/change-mail [post]
-func (h *AuthHandler) ChangeMail(c *gin.Context) {
-	userID := c.MustGet("userID").(uuid.UUID)
-
-	var req dto.ChangeEmailRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(400, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
-		return
-	}
-
-	user, err := h.asc.FindByID(userID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
-		} else {
-			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
-		}
-		return
-	}
-
-	err = h.osc.SendOTP(user.ID, req.Email)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, true)
-}
+// ! Изменение данных
 
 // ChangePass
 // @Summary Смена пароля
@@ -374,13 +329,13 @@ func (h *AuthHandler) ChangeMail(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Security     BearerAuth
-// @Param body body dto.ChangeEmailRequest true "Старый и новый пароль"
+// @Param body body dto.ChangePasswordRequest true "Старый и новый пароль"
 // @Success 	200  {boolean} true
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure     403  {object} dto.ErrorResponse "Неверный данные, доступ запрещен"
 // @Failure     404  {object} dto.ErrorResponse "Запись не найдена"
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router      /auth/change-pass [post]
+// @Router      /auth/change/pass [post]
 func (h *AuthHandler) ChangePass(c *gin.Context) {
 	userID, _ := c.MustGet("userID").(uuid.UUID)
 
@@ -390,23 +345,19 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 		return
 	}
 
+	if req.Password == req.NewPassword {
+		c.JSON(http.StatusConflict, dto.ErrorResponse{Code: 409, Error: "Старый и новый пароль не должны совпадать"})
+		return
+	}
+
 	user, err := h.asc.FindByID(userID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
-		} else {
-			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
-		}
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) != nil {
-		c.JSON(403, dto.ErrorResponse{Code: 403, Error: "Указан неверный пароль от аккаунта"})
-		return
-	}
-
-	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.NewPassword)) == nil {
-		c.JSON(403, dto.ErrorResponse{Code: 403, Error: "Новый пароль должен отличаться от текущего"})
+		c.JSON(409, dto.ErrorResponse{Code: 409, Error: "Указан неверный пароль от аккаунта"})
 		return
 	}
 
@@ -419,34 +370,57 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 	c.JSON(http.StatusOK, true)
 }
 
-// ! Удаление аккаунта
-
-// DeleteAccount
-// @Summary      Запрос на удаление аккаунта
-// @Description  Отправляет код подтверждения
-// @Tags         auth
-// @Produce      json
+// ChangeEmail
+// @Summary Смена почты
+// @Description Позволяет изменить старую почту на новую
+// @Tags auth
+// @Accept json
+// @Produce json
 // @Security     BearerAuth
-// @Param		 email query string true "email"
-// @Success      200  {object} dto.OTPSentResponse "Подтвердите удаление"
-// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/delete-account [post]
-func (h *AuthHandler) DeleteAccount(c *gin.Context) {
+// @Param body body dto.ChangeEmailRequest true "Новый адрес"
+// @Success 	200  {boolean} true
+// @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
+// @Failure     403  {object} dto.ErrorResponse "Неверный данные, доступ запрещен"
+// @Failure     409  {object} dto.ErrorResponse "Адреса совпадают или заняты"
+// @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
+// @Router      /auth/change/email [post]
+func (h *AuthHandler) ChangeEmail(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
-	email := c.Query("email")
-	if email == "" {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
+
+	var req dto.ChangeEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
 	}
 
-	err := h.osc.SendOTP(userID, email)
+	user, err := h.asc.FindByID(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		return
+	}
+
+	if user.Email == req.NewEmail {
+		c.JSON(http.StatusConflict, dto.ErrorResponse{Code: 409, Error: "Новый email не должен совпадать с предыдущим"})
+		return
+	}
+
+	_, err = h.asc.FindByEmail(req.NewEmail)
+	if err == nil {
+		c.JSON(http.StatusConflict, dto.ErrorResponse{Code: 409, Error: "Этот email уже занят"})
+		return
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		return
+	}
+
+	err = h.osc.SendOTP(user.ID, req.NewEmail)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
 		return
 	}
 
 	c.JSON(http.StatusOK, dto.OTPSentResponse{
-		UserID:  userID,
-		Message: "OTP-код отправлен на указанную почту",
+		UserID:  user.ID,
+		Message: "OTP-код отправлен на указанный адрес",
 	})
 }
