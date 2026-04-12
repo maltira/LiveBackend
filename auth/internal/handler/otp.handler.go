@@ -7,13 +7,13 @@ import (
 	"auth/internal/service"
 	"auth/pkg/utils"
 	"errors"
+	"fmt"
 	"net/http"
-	"time"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 type OtpHandler struct {
@@ -39,52 +39,57 @@ func NewOtpHandler(osc service.OtpService, asc service.AuthService, tsc service.
 // @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/verify [post]
-func (h *OtpHandler) VerifyOTP(c *gin.Context) {
-	var req dto.VerifyOTPRequest
+
+func (h *OtpHandler) VerifyLoginOTP(c *gin.Context) {
+	var req dto.VerifyLoginOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
 	}
 
-	otp, err := h.osc.FindValidOTP(req.UserID, req.Code)
+	_, user, err := h.verifyAndMarkOTP(req.UserID, req.Code)
 	if err != nil {
-		c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.InvalidOtpError})
+		h.handleOTPError(c, err)
 		return
 	}
 
-	if err = h.osc.MarkOTPAsUsed(otp.ID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": OTP-код"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка отметки OTP: " + err.Error()})
+	ip := c.ClientIP()
+	userAgent := c.Request.UserAgent()
+	device := utils.ParseDeviceInfo(userAgent)
+	access, refresh, _ := h.tsc.GenerateTokens(user.ID, ip, userAgent, device)
+
+	utils.SetAuthCookies(c, refresh)
+
+	c.JSON(http.StatusOK, dto.LoginResponse{
+		UserID:      user.ID,
+		Email:       user.Email,
+		AccessToken: access,
+	})
+}
+
+func (h *OtpHandler) VerifyDeleteAccountOTP(c *gin.Context) {
+	var req dto.VerifyDeleteOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
+		return
 	}
 
-	user, err := h.asc.FindByID(req.UserID)
+	_, user, err := h.verifyAndMarkOTP(req.UserID, req.Code)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка получения пользователя: " + err.Error()})
-		return
-	} else if user.ToBeDeletedAt != nil && time.Now().After(*user.ToBeDeletedAt) {
-		c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
+		h.handleOTPError(c, err)
 		return
 	}
 
-	switch req.Action {
-	case "login":
-		h.handleLoginAction(c, user)
-	case "change-mail":
-		h.handleChangeMailAction(c, user, req.Email)
-	case "change-pass":
-		h.handleChangePasswordAction(c, user, req.Password)
-	case "delete-account":
-		h.handleDeleteAccountAction(c, user)
-	default:
-		c.JSON(404, dto.ErrorResponse{Code: 404, Error: "Указанное действие не найдено"})
+	err = h.asc.SoftDeleteUserByID(user.ID, user.Email, req.Reason, "user")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка удаления пользователя: " + err.Error()})
+		return
 	}
+
+	_ = h.tsc.RevokeAllRefreshTokens(user.ID, nil)
+	utils.ClearAuthCookies(c)
+
+	c.JSON(http.StatusOK, true)
 }
 
 // ResendOTP
@@ -125,35 +130,6 @@ func (h *OtpHandler) ResendOTP(c *gin.Context) {
 
 // * Вспомогательные функции
 
-func (h *OtpHandler) handleLoginAction(c *gin.Context, user *models.User) {
-	if user.ToBeDeletedAt != nil {
-		recoveryToken, err := utils.GenerateTempToken(user.ID, 15*time.Minute, "recovery_token")
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка recovery_token: " + err.Error()})
-			return
-		}
-		// возвращем токен для восстановления аккаунта
-		c.JSON(http.StatusOK, dto.RecoveryResponse{
-			RecoveryToken: recoveryToken,
-			ToBeDeletedAt: *user.ToBeDeletedAt,
-		})
-		return
-	}
-
-	ip := c.ClientIP()
-	userAgent := c.Request.UserAgent()
-	device := utils.ParseDeviceInfo(userAgent)
-	access, refresh, _ := h.tsc.GenerateTokens(user.ID, ip, userAgent, device)
-
-	utils.SetAuthCookies(c, refresh)
-
-	c.JSON(http.StatusOK, dto.LoginResponse{
-		UserID:      user.ID,
-		Email:       user.Email,
-		AccessToken: access,
-	})
-}
-
 func (h *OtpHandler) handleChangeMailAction(c *gin.Context, user *models.User, email *string) {
 	if email == nil {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError + ": Почта"})
@@ -184,17 +160,45 @@ func (h *OtpHandler) handleChangePasswordAction(c *gin.Context, user *models.Use
 	c.JSON(http.StatusOK, true)
 }
 
-func (h *OtpHandler) handleDeleteAccountAction(c *gin.Context, user *models.User) {
-	deletionTime := time.Now().Add(3 * 24 * time.Hour)
-	err := h.asc.ScheduleDeletion(user.ID, deletionTime)
+// verifyAndMarkOTP - общая логика проверки и пометки OTP как использованного
+func (h *OtpHandler) verifyAndMarkOTP(userID uuid.UUID, code string) (*models.OTPCode, *models.User, error) {
+	// находим валидный OTP
+	otp, err := h.osc.FindValidOTP(userID, code)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка планирования удаления: " + err.Error()})
-		return
+		return nil, nil, errors.New("invalid or expired otp")
 	}
 
-	_ = h.tsc.RevokeAllRefreshTokens(user.ID, nil)
+	// помечаем OTP как использованный
+	if err = h.osc.MarkOTPAsUsed(otp.ID); err != nil {
+		return nil, nil, fmt.Errorf("failed to mark otp as used: %w", err)
+	}
 
-	utils.ClearAuthCookies(c)
+	// получаем пользователя
+	user, err := h.asc.FindByID(userID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("user not found: %w", err)
+	}
 
-	c.JSON(http.StatusOK, true)
+	return otp, user, nil
+}
+
+// handleOTPError — централизованная обработка ошибок OTP
+func (h *OtpHandler) handleOTPError(c *gin.Context, err error) {
+	switch {
+	case err.Error() == "invalid or expired otp":
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Code:  400,
+			Error: config.InvalidOtpError,
+		})
+	case strings.Contains(err.Error(), "user not found"):
+		c.JSON(http.StatusNotFound, dto.ErrorResponse{
+			Code:  404,
+			Error: config.NotFoundError + ": Пользователь",
+		})
+	default:
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
+			Code:  500,
+			Error: "Ошибка обработки OTP: " + err.Error(),
+		})
+	}
 }

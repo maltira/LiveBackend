@@ -16,9 +16,7 @@ type AuthRepository interface {
 	CreateUser(email, password string) (*models.User, error)
 	VerifyNewUser(user *models.User) error
 
-	DeleteUser(id uuid.UUID, isSoft bool) error
-	ScheduleDeletion(userID uuid.UUID, deletionTime time.Time) error
-	CancelDeletion(userID uuid.UUID) error
+	SoftDeleteUserByID(id uuid.UUID, email, reason, deletedBy string) error
 	UpdateUser(user *models.User) error
 }
 type authRepository struct {
@@ -34,7 +32,7 @@ func NewAuthRepository(db *gorm.DB) AuthRepository {
 func (r *authRepository) FindByEmail(email string) (*models.User, error) {
 	var user *models.User
 
-	err := r.db.Where("email = ?", email).First(&user).Error
+	err := r.db.Where("email = ? AND deleted_at IS NULL", email).First(&user).Error
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +42,7 @@ func (r *authRepository) FindByEmail(email string) (*models.User, error) {
 
 func (r *authRepository) FindByID(id uuid.UUID) (*models.User, error) {
 	var user models.User
-	err := r.db.First(&user, "id = ?", id).Error
+	err := r.db.First(&user, "id = ? AND deleted_at IS NULL", id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -62,10 +60,10 @@ func (r *authRepository) CreateUser(email, password string) (*models.User, error
 		if !user.IsVerified {
 			user.Password = password
 			if err := r.db.Save(&user).Error; err != nil {
-				return user, err
+				return nil, err
 			}
 		} else {
-			return user, errors.New("email already exists")
+			return nil, errors.New("email already exists")
 		}
 	}
 	return user, result.Error
@@ -75,24 +73,14 @@ func (r *authRepository) VerifyNewUser(user *models.User) error {
 	return r.db.Save(&user).Error
 }
 
-func (r *authRepository) DeleteUser(id uuid.UUID, isSoft bool) error {
-	if isSoft {
-		return r.db.Delete(&models.User{}, "id = ?", id).Error
-	}
-	return r.db.Unscoped().Delete(&models.User{}, "id = ?", id).Error
-}
-
-func (r *authRepository) ScheduleDeletion(userID uuid.UUID, deletionTime time.Time) error {
-	user, err := r.FindByID(userID)
-	if err != nil {
-		return err
-	}
-	user.ToBeDeletedAt = &deletionTime
-	return r.db.Save(user).Error
-}
-
-func (r *authRepository) CancelDeletion(userID uuid.UUID) error {
-	return r.db.Model(&models.User{}).Where("id = ?", userID).Update("to_be_deleted_at", nil).Error
+func (r *authRepository) SoftDeleteUserByID(id uuid.UUID, email, reason, deletedBy string) error {
+	now := time.Now()
+	return r.db.Model(&models.User{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"email":           "delete/" + now.Format("2006-01-02 15:04:05") + "/" + email,
+		"deletion_reason": reason,
+		"deleted_by":      deletedBy,
+		"deleted_at":      time.Now(),
+	}).Error
 }
 
 func (r *authRepository) UpdateUser(user *models.User) error {

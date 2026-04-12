@@ -25,11 +25,10 @@ type AuthService interface {
 	Login(email, password string) (uuid.UUID, error)
 	FindByID(id uuid.UUID) (*models.User, error)
 	FindByEmail(email string) (*models.User, error)
-	DeleteUserByID(id uuid.UUID) error
+
+	SoftDeleteUserByID(id uuid.UUID, email, reason, deletedBy string) error
 	UpdateUser(user *models.User) error
 	ResetPassword(token, newPassword string) error
-	ScheduleDeletion(userID uuid.UUID, deletionTime time.Time) error
-	CancelDeletion(userID uuid.UUID) error
 }
 type authService struct {
 	repo  repository.AuthRepository
@@ -95,15 +94,11 @@ func (s *authService) VerifyNewAccount(token string) (*models.User, error) {
 
 func (s *authService) Login(email, password string) (uuid.UUID, error) {
 	user, err := s.repo.FindByEmail(email)
-	if err != nil {
+	if err != nil || !user.IsVerified {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return uuid.Nil, errors.New("invalid credentials") // не говорим, что email не существует
 		}
 		return uuid.Nil, err
-	}
-
-	if !user.IsVerified {
-		return uuid.Nil, errors.New("account is not verified")
 	}
 
 	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)) != nil {
@@ -125,8 +120,8 @@ func (s *authService) FindByEmail(email string) (*models.User, error) {
 
 // ! ДЕЙСТВИЯ С ПОЛЬЗОВАТЕЛЕМ
 
-func (s *authService) DeleteUserByID(id uuid.UUID) error {
-	return s.repo.DeleteUser(id, true)
+func (s *authService) SoftDeleteUserByID(id uuid.UUID, email, reason, deletedBy string) error {
+	return s.repo.SoftDeleteUserByID(id, email, reason, deletedBy)
 }
 
 func (s *authService) UpdateUser(user *models.User) error {
@@ -179,12 +174,4 @@ func (s *authService) ResetPassword(token, newPassword string) error {
 	_ = s.tRepo.RevokeAll(user.ID, nil)
 
 	return nil
-}
-
-func (s *authService) ScheduleDeletion(userID uuid.UUID, deletionTime time.Time) error {
-	return s.repo.ScheduleDeletion(userID, deletionTime)
-}
-
-func (s *authService) CancelDeletion(userID uuid.UUID) error {
-	return s.repo.CancelDeletion(userID)
 }

@@ -1,8 +1,6 @@
 package dto
 
 import (
-	"time"
-
 	"github.com/google/uuid"
 )
 
@@ -13,28 +11,24 @@ type AuthRequest struct {
 	Password string `json:"password" binding:"required,min=6"`
 }
 
-type VerifyOTPRequest struct {
-	UserID   uuid.UUID `json:"user_id" binding:"required"`
-	Email    *string   `json:"email"`
-	Password *string   `json:"password"`
-	Code     string    `json:"code" binding:"required,len=6"`
-	Action   string    `json:"action" binding:"required"`
+type VerifyLoginOTPRequest struct {
+	UserID uuid.UUID `json:"user_id" binding:"required"`
+	Code   string    `json:"code" binding:"required,len=6"`
+}
+
+type VerifyDeleteOTPRequest struct {
+	UserID uuid.UUID `json:"user_id" binding:"required"`
+	Code   string    `json:"code" binding:"required,len=6"`
+	Reason string    `json:"reason" binding:"max=255"`
 }
 
 type ForgotPasswordRequest struct {
 	Email string `json:"email" binding:"required,email"`
 }
+
 type ResetPasswordRequest struct {
 	Token       string `json:"token"`
 	NewPassword string `json:"new_password" binding:"required,min=8"`
-}
-
-type TempTokenRequest struct {
-	TempToken string `json:"temp_token" binding:"required"`
-}
-
-type DeleteAccountRequest struct {
-	Password string `json:"password" binding:"required,min=8"`
 }
 
 type ChangeEmailRequest struct {
@@ -47,11 +41,6 @@ type ChangePasswordRequest struct {
 
 // * Responses
 
-type AuthResponse struct {
-	UserID  uuid.UUID `json:"user_id"`
-	Message string    `json:"message"`
-}
-
 type OTPSentResponse struct {
 	UserID  uuid.UUID `json:"user_id"`
 	Message string    `json:"message"`
@@ -61,14 +50,4 @@ type LoginResponse struct {
 	UserID      uuid.UUID `json:"user_id"`
 	Email       string    `json:"email"`
 	AccessToken string    `json:"access_token"`
-}
-
-type TempTokenResponse struct {
-	UserID    uuid.UUID `json:"user_id"`
-	TempToken string    `json:"temp_token"`
-}
-
-type RecoveryResponse struct {
-	ToBeDeletedAt time.Time `json:"to_be_deleted_at"`
-	RecoveryToken string    `json:"recovery_token"`
 }

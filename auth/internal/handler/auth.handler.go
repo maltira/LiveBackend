@@ -69,13 +69,13 @@ func (h *AuthHandler) Register(c *gin.Context) {
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Param		id path string true "Токен верификации"
+// @Param		id query string true "Токен верификации"
 // @Success 	200  {boolean} true
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router      /auth/verify-email/{token} [post]
+// @Router      /auth/verify-email [post]
 func (h *AuthHandler) VerifyEmail(c *gin.Context) {
-	token := c.Param("token")
+	token := c.Query("token")
 	if token == "" {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
@@ -105,7 +105,7 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 // @Param        body body dto.AuthRequest true "Данные для входа"
 // @Success      200  {boolean} true
 // @Failure      400  {object} dto.ErrorResponse "Некорректные входные данные"
-// @Failure      403  {object} dto.ErrorResponse "Неверный email или пароль"
+// @Failure      401  {object} dto.ErrorResponse "Неверный email или пароль"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
@@ -118,10 +118,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	id, err := h.asc.Login(req.Email, req.Password)
 	if err != nil {
 		switch {
-		case err.Error() == "account is not verified":
-			c.JSON(http.StatusForbidden, dto.ErrorResponse{Code: 403, Error: config.NotVerifiedError})
 		case err.Error() == "invalid credentials":
-			c.JSON(http.StatusForbidden, dto.ErrorResponse{Code: 403, Error: config.IncorrectAuthError})
+			c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: config.IncorrectAuthError})
 		default:
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		}
@@ -135,7 +133,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	}
 
 	// отправляем на верификацию кода
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.OTPSentResponse{
+		UserID:  id,
+		Message: "OTP-код отправляен на указанную почту",
+	})
 }
 
 // ! Выход из профиля
@@ -194,7 +195,7 @@ func (h *AuthHandler) LogoutAll(c *gin.Context) {
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      403  {object} dto.ErrorResponse "Аккаунт на стадии удаления"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/forgot-password [post]
+// @Router       /auth/request/forgot-password [post]
 func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 	var req dto.ForgotPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -210,7 +211,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		c.JSON(http.StatusOK, true)
 		return
 	}
-	if user.ToBeDeletedAt != nil {
+	if user.DeletedAt != nil {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
 			Code:  403,
 			Error: "Аккаунт находится на стадии удаления, невозможно изменить пароль",
@@ -256,7 +257,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 
 		err = smtp.SendPasswordReset(req.Email, resetURL, config.Env.PassTokenDuration)
 		if err != nil {
-			log.Printf("Failed to send verification email to %s: %v", req.Email, err)
+			log.Printf("Failed to send reset password email to %s: %v", req.Email, err)
 		}
 	}()
 
@@ -420,18 +421,23 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 
 // ! Удаление аккаунта
 
-// Delete
+// DeleteAccount
 // @Summary      Запрос на удаление аккаунта
-// @Description  Повторный ввод пароля, генерация токена удаления
-// @Tags         delete
+// @Description  Отправляет код подтверждения
+// @Tags         auth
 // @Produce      json
 // @Security     BearerAuth
+// @Param		 email query string true "email"
 // @Success      200  {object} dto.OTPSentResponse "Подтвердите удаление"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/delete [post]
-func (h *AuthHandler) Delete(c *gin.Context) {
+// @Router       /auth/delete-account [post]
+func (h *AuthHandler) DeleteAccount(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
-	email := c.Param("email")
+	email := c.Query("email")
+	if email == "" {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
+		return
+	}
 
 	err := h.osc.SendOTP(userID, email)
 	if err != nil {
@@ -443,40 +449,4 @@ func (h *AuthHandler) Delete(c *gin.Context) {
 		UserID:  userID,
 		Message: "OTP-код отправлен на указанную почту",
 	})
-}
-
-// RecoveryAccount
-// @Summary      Восстановление аккаунта (после удаления)
-// @Description  Восстанавливает удаленный аккаунт
-// @Tags         delete
-// @Produce      json
-// @Param		 id path string true "uuid пользователя"
-// @Param		 token query string true "recovery_token"
-// @Success      200  {boolean} true
-// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
-// @Failure      403  {object} dto.ErrorResponse "Некорректный токен"
-// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/recovery/{id} [put]
-func (h *AuthHandler) RecoveryAccount(c *gin.Context) {
-	id := c.Param("id")
-	userID := uuid.MustParse(id)
-	recoveryToken := c.DefaultQuery("token", "")
-	if recoveryToken == "" {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError + ": recovery_token is empty"})
-		return
-	}
-
-	claims, err := utils.ValidateTempToken(recoveryToken)
-	if err != nil || claims["action"] != "recovery_token" {
-		c.JSON(http.StatusForbidden, dto.ErrorResponse{Code: 403, Error: config.InvalidTokenError})
-		return
-	}
-
-	err = h.asc.CancelDeletion(userID)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка восстановления: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, true)
 }

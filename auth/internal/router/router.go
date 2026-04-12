@@ -36,21 +36,24 @@ func InitRouter() *gin.Engine {
 	{
 		public.POST("/register", aHandler.Register)
 		public.POST("/login", aHandler.Login)
-		public.POST("/verify", oHandler.VerifyOTP)
 		public.POST("/resend", oHandler.ResendOTP)
 		public.POST("/refresh", tHandler.Refresh)
 
+		public.POST("/verify/login", oHandler.VerifyLoginOTP)
+		// public.POST("/verify/email-change", oHandler.VerifyOTP)
+		// public.POST("/verify/pass-change", oHandler.VerifyOTP)
+
 		public.POST("/logout", aHandler.LogoutCurrent)
 
-		public.POST("/verify-email/:token", aHandler.VerifyEmail)
+		public.POST("/verify-email", aHandler.VerifyEmail)
 	}
 
 	reset := api.Group("")
 	reset.Use(middleware.RateLimiterMiddleware(rdb, "3-H", "auth:limiter:reset:"))
 	{
-		reset.POST("/forgot-password", aHandler.ForgotPassword)
+		// Восстановление пароля
+		reset.POST("/request/forgot-password", aHandler.ForgotPassword)
 		reset.POST("/reset-password", aHandler.ResetPassword)
-		reset.PUT("/recovery/:id", middleware.ValidateUUID(), aHandler.RecoveryAccount)
 	}
 
 	protected := api.Group("")
@@ -62,7 +65,8 @@ func InitRouter() *gin.Engine {
 		protected.POST("/change-mail", aHandler.ChangeMail)
 		protected.POST("/change-pass", aHandler.ChangePass)
 
-		protected.POST("/delete/:email", aHandler.Delete)
+		protected.POST("/delete-account", aHandler.DeleteAccount)
+		public.POST("/verify/del-account", oHandler.VerifyDeleteAccountOTP)
 
 		protected.POST("/logout/all", aHandler.LogoutAll)
 		protected.DELETE("/logout/:token", tHandler.TerminateSession)
