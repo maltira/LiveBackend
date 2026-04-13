@@ -62,9 +62,9 @@ func (h *RefreshHandler) Refresh(c *gin.Context) {
 // @Tags         logout
 // @Produce      json
 // @Security     BearerAuth
-// @Success      200  {boolean} true
 // @Param        token path string true "Refresh-токен сессии, которую нужно завершить"
-// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
+// @Success      200  {object} dto.MessageResponse "Сессия завершена"
+// @Failure      400  {object} dto.ErrorResponse "Переданы некорректные данные"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/logout/{token} [post]
 func (h *RefreshHandler) TerminateSession(c *gin.Context) {
@@ -80,7 +80,7 @@ func (h *RefreshHandler) TerminateSession(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Сессия завершена"})
 }
 
 // ListSessions
@@ -90,7 +90,6 @@ func (h *RefreshHandler) TerminateSession(c *gin.Context) {
 // @Produce      json
 // @Security     BearerAuth
 // @Success      200  {array} models.RefreshToken "Список сессий"
-// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/sessions [get]
 func (h *RefreshHandler) ListSessions(c *gin.Context) {

@@ -5,6 +5,7 @@ import (
 	"auth/internal/dto"
 	smtp "auth/internal/email"
 	"auth/internal/service"
+	"auth/pkg/custom"
 	"auth/pkg/redis"
 	"auth/pkg/utils"
 	"context"
@@ -12,7 +13,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -37,14 +37,19 @@ func NewAuthHandler(asc service.AuthService, osc service.OtpService, tsc service
 // @Accept json
 // @Produce json
 // @Param body body dto.AuthRequest true "Данные для регистрации"
-// @Success 	200  {boolean} true "Подтвердите аккаунт по ссылке на почте"
+// @Success 	200  {object} dto.MessageResponse "Подтвердите аккаунт по ссылке на почте"
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure     409  {object} dto.ErrorResponse "Пользователь с таким email уже существует"
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router      /auth/register [post]
 func (h *AuthHandler) Register(c *gin.Context) {
-	var req dto.AuthRequest
+	var req dto.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
+			return
+		}
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
 	}
@@ -59,7 +64,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Ссылка для подтверждения отправлена"})
 }
 
 // VerifyEmail
@@ -69,7 +74,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 // @Accept json
 // @Produce json
 // @Param		id query string true "Токен верификации"
-// @Success 	200  {boolean} true
+// @Success 	200  {object} dto.MessageResponse "Аккаунт подтвержден"
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router      /auth/register/verify [put]
@@ -80,40 +85,13 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 		return
 	}
 
-	// ДОБАВИТЬ ТРАНЗАКЦИЮ
-	user, tx, err := h.asc.VerifyNewAccount(token)
+	err := h.asc.VerifyNewAccount(token)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
 
-	// событие в очередь (3 попытки)
-	var lastErr error
-	for attempt := 1; attempt <= 3; attempt++ {
-		err = utils.SendRequestCreateProfile(user.ID)
-		if err == nil {
-			lastErr = nil
-			break
-		}
-
-		lastErr = err
-		log.Printf("Attempt %d/3 to create profile %s failed: %v", attempt, user.ID.String(), err)
-
-		if attempt < 3 {
-			delay := time.Duration(attempt*300) * time.Millisecond
-			time.Sleep(delay)
-		}
-	}
-
-	if lastErr != nil {
-		tx.Rollback()
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: lastErr.Error()})
-		return
-	}
-
-	// ЗАКРЫТЬ ТРАНЗАКЦИЮ
-	tx.Commit()
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Аккаунт успешно подтвержден"})
 }
 
 // Login
@@ -123,13 +101,13 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        body body dto.AuthRequest true "Данные для входа"
-// @Success      200  {boolean} true
+// @Success      200  {object} dto.OTPSentResponse "Подтвердите вход"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure      401  {object} dto.ErrorResponse "Неверный email или пароль"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/login [post]
 func (h *AuthHandler) Login(c *gin.Context) {
-	var req dto.AuthRequest
+	var req dto.LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
@@ -167,7 +145,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 // @Tags         logout
 // @Produce      json
 // @Security	 BearerAuth
-// @Success      200  {boolean} true
+// @Success      200  {object} dto.MessageResponse "Вы вышли из аккаунта"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/logout [post]
 func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
@@ -178,7 +156,7 @@ func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
 	}
 	utils.ClearAuthCookies(c)
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Вы вышли из аккаунта"})
 }
 
 // LogoutAll
@@ -187,7 +165,7 @@ func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
 // @Tags         logout
 // @Produce      json
 // @Security     BearerAuth
-// @Success      200  {boolean} true
+// @Success      200  {object} dto.MessageResponse "Вышли со всех аккаунтов"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/logout/all [post]
 func (h *AuthHandler) LogoutAll(c *gin.Context) {
@@ -199,19 +177,19 @@ func (h *AuthHandler) LogoutAll(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Выполнен выход со всех аккаунтов"})
 }
 
 // ! Забыл пароль
 
 // ForgotPassword
 // @Summary      Запрос на восстановление пароля (этап 1)
-// @Description  Отправляет OTP-код для сброса пароля, когда пользователь нажал "Забыл пароль"
+// @Description  Отправляет ссылку для сброса пароля, когда пользователь нажал "Забыл пароль"
 // @Tags         reset
 // @Accept       json
 // @Produce      json
 // @Param        body body dto.ForgotPasswordRequest true "Email"
-// @Success      200  {boolean} true
+// @Success      200  {object} dto.MessageResponse "Ссылка для сброса отправлена"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/forgot-password [post]
@@ -273,7 +251,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		}
 	}()
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Пройдите по ссылке в письме, чтобы сменить пароль"})
 }
 
 // ResetPassword
@@ -284,18 +262,23 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        body body dto.ResetPasswordRequest true "Токен и новый пароль"
-// @Success      200  {boolean} true
+// @Success      200  {object} dto.MessageResponse "Вы изменили пароль"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/reset-password [post]
 func (h *AuthHandler) ResetPassword(c *gin.Context) {
 	var req dto.ResetPasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
+			return
+		}
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
 	}
 
-	err := h.asc.ResetPassword(req.Token, req.NewPassword)
+	err := h.asc.ResetPassword(req.Token, req.Password)
 	if err != nil {
 		if err.Error() == "invalid or expired token" {
 			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Ссылка для сброса пароля недействительна или истекла"})
@@ -307,7 +290,7 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 
 	utils.ClearAuthCookies(c)
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Пароль изменён"})
 }
 
 // ! Информация о пользователе
@@ -348,7 +331,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 // @Produce json
 // @Security     BearerAuth
 // @Param body body dto.ChangePasswordRequest true "Старый и новый пароль"
-// @Success 	200  {boolean} true
+// @Success 	200  {object} dto.OTPSentResponse "Подтвердите смену пароля"
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure     409  {object} dto.ErrorResponse "Неверный данные, доступ запрещен"
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -358,12 +341,12 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 
 	var req dto.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
+			return
+		}
 		c.JSON(400, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
-		return
-	}
-
-	if req.Password == req.NewPassword {
-		c.JSON(http.StatusConflict, dto.ErrorResponse{Code: 409, Error: "Старый и новый пароль не должны совпадать"})
 		return
 	}
 
@@ -384,7 +367,10 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.OTPSentResponse{
+		UserID:  user.ID,
+		Message: "OTP-код отправлен на вашу почту",
+	})
 }
 
 // ChangeEmail
@@ -395,7 +381,7 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 // @Produce json
 // @Security     BearerAuth
 // @Param body body dto.ChangeEmailRequest true "Новый адрес"
-// @Success 	200  {boolean} true
+// @Success 	200  {object} dto.OTPSentResponse "Подтвердите смену почты"
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure     409  {object} dto.ErrorResponse "Неверный данные, доступ запрещен"
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -405,6 +391,11 @@ func (h *AuthHandler) ChangeEmail(c *gin.Context) {
 
 	var req dto.ChangeEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
+			return
+		}
 		c.JSON(400, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
 	}

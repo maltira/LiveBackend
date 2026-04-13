@@ -46,7 +46,7 @@ func InitRouter() *gin.Engine {
 		}
 		{
 			login.POST("", aHandler.Login)
-			login.PUT("/verify", oHandler.VerifyLoginOTP)
+			login.POST("/verify", oHandler.VerifyLoginOTP)
 		}
 		{
 			otp.POST("/send", oHandler.SendOTP)

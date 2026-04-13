@@ -5,6 +5,7 @@ import (
 	"auth/internal/dto"
 	"auth/internal/models"
 	"auth/internal/service"
+	"auth/pkg/custom"
 	"auth/pkg/utils"
 	"errors"
 	"fmt"
@@ -41,6 +42,11 @@ func NewOtpHandler(osc service.OtpService, asc service.AuthService, tsc service.
 func (h *OtpHandler) SendOTP(c *gin.Context) {
 	var req dto.SendOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
+			return
+		}
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
 	}
@@ -73,6 +79,11 @@ func (h *OtpHandler) SendOTP(c *gin.Context) {
 func (h *OtpHandler) VerifyLoginOTP(c *gin.Context) {
 	var req dto.VerifyLoginOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
+			return
+		}
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
 	}
@@ -105,7 +116,7 @@ func (h *OtpHandler) VerifyLoginOTP(c *gin.Context) {
 // @Produce      json
 // @Security     BearerAuth
 // @Param        body body dto.VerifyDeleteOTPRequest true "UserID + Code + Reason"
-// @Success      200  {boolean} true
+// @Success      200  {object} dto.MessageResponse "Аккаунт удалён"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -113,6 +124,11 @@ func (h *OtpHandler) VerifyLoginOTP(c *gin.Context) {
 func (h *OtpHandler) VerifyDeleteAccountOTP(c *gin.Context) {
 	var req dto.VerifyDeleteOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
+			return
+		}
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
 	}
@@ -132,7 +148,7 @@ func (h *OtpHandler) VerifyDeleteAccountOTP(c *gin.Context) {
 	_ = h.tsc.RevokeAllRefreshTokens(user.ID, nil)
 	utils.ClearAuthCookies(c)
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Аккаунт был удалён"})
 }
 
 // VerifyChangeMailOTP
@@ -143,7 +159,7 @@ func (h *OtpHandler) VerifyDeleteAccountOTP(c *gin.Context) {
 // @Produce      json
 // @Security     BearerAuth
 // @Param        body body dto.VerifyChangeEmailRequest true "UserID + Code + NewEmail"
-// @Success      200  {boolean} true
+// @Success      200  {object} dto.MessageResponse "Почта изменена"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -151,6 +167,11 @@ func (h *OtpHandler) VerifyDeleteAccountOTP(c *gin.Context) {
 func (h *OtpHandler) VerifyChangeMailOTP(c *gin.Context) {
 	var req dto.VerifyChangeEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
+			return
+		}
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
 	}
@@ -167,7 +188,7 @@ func (h *OtpHandler) VerifyChangeMailOTP(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка обновления: " + err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Почта успешно изменена"})
 }
 
 // VerifyChangePasswordOTP
@@ -178,7 +199,7 @@ func (h *OtpHandler) VerifyChangeMailOTP(c *gin.Context) {
 // @Produce      json
 // @Security     BearerAuth
 // @Param        body body dto.VerifyChangePassRequest true "UserID + Code + NewPassword"
-// @Success      200  {boolean} true
+// @Success      200  {object} dto.MessageResponse "Пароль успешно изменён"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
@@ -186,6 +207,11 @@ func (h *OtpHandler) VerifyChangeMailOTP(c *gin.Context) {
 func (h *OtpHandler) VerifyChangePasswordOTP(c *gin.Context) {
 	var req dto.VerifyChangePassRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
+			return
+		}
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
 	}
@@ -193,6 +219,11 @@ func (h *OtpHandler) VerifyChangePasswordOTP(c *gin.Context) {
 	_, user, err := h.verifyAndMarkOTP(req.UserID, req.Code)
 	if err != nil {
 		h.handleOTPError(c, err)
+		return
+	}
+
+	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) != nil {
+		c.JSON(409, dto.ErrorResponse{Code: 409, Error: "Указан неверный пароль от аккаунта"})
 		return
 	}
 
@@ -210,7 +241,7 @@ func (h *OtpHandler) VerifyChangePasswordOTP(c *gin.Context) {
 	}
 	utils.ClearAuthCookies(c)
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Пароль успешно изменён"})
 }
 
 // ! Вспомогательные функции

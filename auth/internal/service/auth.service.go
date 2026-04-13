@@ -21,7 +21,7 @@ import (
 
 type AuthService interface {
 	Register(email, password string) error
-	VerifyNewAccount(token string) (*models.User, *gorm.DB, error)
+	VerifyNewAccount(token string) error
 	Login(email, password string) (uuid.UUID, error)
 	FindByID(id uuid.UUID) (*models.User, error)
 	FindByEmail(email string) (*models.User, error)
@@ -67,29 +67,53 @@ func (s *authService) Register(email, password string) error {
 	return nil
 }
 
-func (s *authService) VerifyNewAccount(token string) (*models.User, *gorm.DB, error) {
+func (s *authService) VerifyNewAccount(token string) error {
 	id, err := redis.AuthRedis.Get(context.Background(), "verify:"+token).Result()
 	if err != nil {
-		return nil, nil, fmt.Errorf("invalid or expired verification token")
+		return fmt.Errorf("invalid or expired verification token")
 	}
 	userID := uuid.MustParse(id)
 
 	user, err := s.FindByID(userID)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 
 	if user.IsVerified {
-		return user, nil, nil
+		return nil
 	}
 
 	user.IsVerified = true
 	tx, err := s.repo.VerifyNewUser(user)
 	if err != nil {
-		return nil, nil, err
+		return err
 	}
 
-	return user, tx, nil
+	// событие в очередь (3 попытки)
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		err = utils.SendRequestCreateProfile(userID)
+		if err == nil {
+			lastErr = nil
+			break
+		}
+
+		lastErr = err
+		log.Printf("Attempt %d/3 to create profile %s failed: %v", attempt, id, err)
+
+		if attempt < 3 {
+			delay := time.Duration(attempt*300) * time.Millisecond
+			time.Sleep(delay)
+		}
+	}
+
+	if lastErr != nil {
+		tx.Rollback()
+		return lastErr
+	}
+
+	tx.Commit()
+	return nil
 }
 
 func (s *authService) Login(email, password string) (uuid.UUID, error) {

@@ -15,6 +15,7 @@ package main
 import (
 	"auth/config"
 	"auth/internal/router"
+	_ "auth/pkg/custom"
 	authdb "auth/pkg/database"
 	"auth/pkg/rabbitmq"
 	"auth/pkg/redis"
