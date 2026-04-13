@@ -4,7 +4,7 @@
 // @contact.name   	@enemybye
 
 // @host 			localhost:8001
-// @BasePath 		/api
+// @BasePath 		/api/auth
 
 // @securityDefinitions.apikey BearerAuth
 // @in header

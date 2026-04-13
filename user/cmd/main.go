@@ -18,7 +18,6 @@ import (
 	"syscall"
 	"time"
 	"user/config"
-	"user/internal/consumer"
 	"user/internal/handler"
 	"user/internal/middleware"
 	"user/internal/repository"
@@ -66,7 +65,6 @@ func main() {
 	}()
 
 	// Получаем события в фоне
-	go consumer.StartUserEventsConsumer(userdb.GetDB())
 	go handler.PubSubBlock()
 	go handler.PubSubStatus()
 	go handler.PubSubNewMessage()

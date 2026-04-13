@@ -42,11 +42,11 @@ func InitRouter() *gin.Engine {
 	{
 		{
 			register.POST("", aHandler.Register)
-			register.POST("/verify", aHandler.VerifyEmail)
+			register.PUT("/verify", aHandler.VerifyEmail)
 		}
 		{
 			login.POST("", aHandler.Login)
-			login.POST("/verify", oHandler.VerifyLoginOTP)
+			login.PUT("/verify", oHandler.VerifyLoginOTP)
 		}
 		{
 			otp.POST("/send", oHandler.SendOTP)
@@ -67,17 +67,17 @@ func InitRouter() *gin.Engine {
 	protected.Use(middleware.AuthMiddleware(tRepo))
 	{
 		protected.GET("/me", aHandler.Me)
-		public.POST("/delete-account", oHandler.VerifyDeleteAccountOTP)
+		protected.POST("/delete-account", oHandler.VerifyDeleteAccountOTP)
 
 		protected.POST("/change/pass", aHandler.ChangePass)
-		protected.POST("/change/pass/verify", oHandler.VerifyChangePasswordOTP)
+		protected.PUT("/change/pass/verify", oHandler.VerifyChangePasswordOTP)
 		protected.POST("/change/email", aHandler.ChangeEmail)
-		protected.POST("/change/email/verify", oHandler.VerifyChangeMailOTP)
+		protected.PUT("/change/email/verify", oHandler.VerifyChangeMailOTP)
 
 		protected.GET("/sessions", tHandler.ListSessions)
 		protected.POST("/logout", aHandler.LogoutCurrent)
 		protected.POST("/logout/all", aHandler.LogoutAll)
-		protected.DELETE("/logout/:token", tHandler.TerminateSession)
+		protected.POST("/logout/:token", tHandler.TerminateSession)
 	}
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))

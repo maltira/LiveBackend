@@ -72,7 +72,7 @@ func (h *AuthHandler) Register(c *gin.Context) {
 // @Success 	200  {boolean} true
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router      /auth/register/verify [post]
+// @Router      /auth/register/verify [put]
 func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {
@@ -188,7 +188,6 @@ func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
 // @Produce      json
 // @Security     BearerAuth
 // @Success      200  {boolean} true
-// @Failure      403  {object} dto.ErrorResponse "Некорректный токен"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/logout/all [post]
 func (h *AuthHandler) LogoutAll(c *gin.Context) {
@@ -214,7 +213,6 @@ func (h *AuthHandler) LogoutAll(c *gin.Context) {
 // @Param        body body dto.ForgotPasswordRequest true "Email"
 // @Success      200  {boolean} true
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
-// @Failure      403  {object} dto.ErrorResponse "Аккаунт на стадии удаления"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/forgot-password [post]
 func (h *AuthHandler) ForgotPassword(c *gin.Context) {
@@ -352,8 +350,7 @@ func (h *AuthHandler) Me(c *gin.Context) {
 // @Param body body dto.ChangePasswordRequest true "Старый и новый пароль"
 // @Success 	200  {boolean} true
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
-// @Failure     403  {object} dto.ErrorResponse "Неверный данные, доступ запрещен"
-// @Failure     404  {object} dto.ErrorResponse "Запись не найдена"
+// @Failure     409  {object} dto.ErrorResponse "Неверный данные, доступ запрещен"
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router      /auth/change/pass [post]
 func (h *AuthHandler) ChangePass(c *gin.Context) {
@@ -400,8 +397,7 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 // @Param body body dto.ChangeEmailRequest true "Новый адрес"
 // @Success 	200  {boolean} true
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
-// @Failure     403  {object} dto.ErrorResponse "Неверный данные, доступ запрещен"
-// @Failure     409  {object} dto.ErrorResponse "Адреса совпадают или заняты"
+// @Failure     409  {object} dto.ErrorResponse "Неверный данные, доступ запрещен"
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router      /auth/change/email [post]
 func (h *AuthHandler) ChangeEmail(c *gin.Context) {

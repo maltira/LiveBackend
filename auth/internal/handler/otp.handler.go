@@ -31,7 +31,7 @@ func NewOtpHandler(osc service.OtpService, asc service.AuthService, tsc service.
 // SendOTP
 // @Summary      Отправка OTP
 // @Description  Позволяет сгенерировать и отправить OTP-код
-// @Tags         verify
+// @Tags         otp
 // @Accept       json
 // @Produce      json
 // @Param 		 body body dto.SendOTPRequest true "UserID и Email"
@@ -61,7 +61,7 @@ func (h *OtpHandler) SendOTP(c *gin.Context) {
 // VerifyLoginOTP
 // @Summary      Подтверждение входа
 // @Description  Проверка OTP-кода + вход в аккаунт
-// @Tags         verify
+// @Tags         otp
 // @Accept       json
 // @Produce      json
 // @Param        body body dto.VerifyLoginOTPRequest true "UserID + Code"
@@ -69,7 +69,7 @@ func (h *OtpHandler) SendOTP(c *gin.Context) {
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/login/verify [post]
+// @Router       /auth/login/verify [put]
 func (h *OtpHandler) VerifyLoginOTP(c *gin.Context) {
 	var req dto.VerifyLoginOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -100,7 +100,7 @@ func (h *OtpHandler) VerifyLoginOTP(c *gin.Context) {
 // VerifyDeleteAccountOTP
 // @Summary      Подтверждение удаления аккаунта
 // @Description  Проверка OTP-кода + удаление аккаунта
-// @Tags         verify
+// @Tags         otp
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
@@ -138,7 +138,7 @@ func (h *OtpHandler) VerifyDeleteAccountOTP(c *gin.Context) {
 // VerifyChangeMailOTP
 // @Summary      Подтверждение смены почты
 // @Description  Проверка OTP-кода + смена почты
-// @Tags         verify
+// @Tags         otp
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
@@ -147,7 +147,7 @@ func (h *OtpHandler) VerifyDeleteAccountOTP(c *gin.Context) {
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/change/email/verify [post]
+// @Router       /auth/change/email/verify [put]
 func (h *OtpHandler) VerifyChangeMailOTP(c *gin.Context) {
 	var req dto.VerifyChangeEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -173,7 +173,7 @@ func (h *OtpHandler) VerifyChangeMailOTP(c *gin.Context) {
 // VerifyChangePasswordOTP
 // @Summary      Подтверждение смены пароля
 // @Description  Проверка OTP-кода + смена пароля
-// @Tags         verify
+// @Tags         otp
 // @Accept       json
 // @Produce      json
 // @Security     BearerAuth
@@ -182,7 +182,7 @@ func (h *OtpHandler) VerifyChangeMailOTP(c *gin.Context) {
 // @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/change/pass/verify [post]
+// @Router       /auth/change/pass/verify [put]
 func (h *OtpHandler) VerifyChangePasswordOTP(c *gin.Context) {
 	var req dto.VerifyChangePassRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

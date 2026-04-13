@@ -59,14 +59,14 @@ func (h *RefreshHandler) Refresh(c *gin.Context) {
 // TerminateSession
 // @Summary      Закончить конкретную сессию
 // @Description  Заканчивает указанную сессию
-// @Tags         token
+// @Tags         logout
 // @Produce      json
 // @Security     BearerAuth
 // @Success      200  {boolean} true
 // @Param        token path string true "Refresh-токен сессии, которую нужно завершить"
 // @Failure      401  {object} dto.ErrorResponse "Неавторизован"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/logout/{token} [delete]
+// @Router       /auth/logout/{token} [post]
 func (h *RefreshHandler) TerminateSession(c *gin.Context) {
 	token := c.Param("token")
 	if token == "" {
