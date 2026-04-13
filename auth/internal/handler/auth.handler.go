@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -86,11 +87,27 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 		return
 	}
 
-	// событие в очередь
-	err = utils.SendRequestCreateProfile(user.ID)
-	if err != nil {
+	// событие в очередь (3 попытки)
+	var lastErr error
+	for attempt := 1; attempt <= 3; attempt++ {
+		err = utils.SendRequestCreateProfile(user.ID)
+		if err == nil {
+			lastErr = nil
+			break
+		}
+
+		lastErr = err
+		log.Printf("Attempt %d/3 to create profile %s failed: %v", attempt, user.ID.String(), err)
+
+		if attempt < 3 {
+			delay := time.Duration(attempt*300) * time.Millisecond
+			time.Sleep(delay)
+		}
+	}
+
+	if lastErr != nil {
 		tx.Rollback()
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: lastErr.Error()})
 		return
 	}
 
