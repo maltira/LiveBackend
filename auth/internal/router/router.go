@@ -17,48 +17,67 @@ import (
 
 func InitRouter() *gin.Engine {
 	rdb := redis.AuthRedis
-	authRepo := repository.NewAuthRepository(authdb.GetDB())
-	authService := service.NewAuthService(authRepo)
-	authHandler := handler.NewAuthHandler(authService)
-	otpHandler := handler.NewOtpHandler(authService)
-	refreshHandler := handler.NewRefreshHandler(authService)
+	aRepo := repository.NewAuthRepository(authdb.GetDB())
+	oRepo := repository.NewOtpRepository(authdb.GetDB())
+	tRepo := repository.NewTokenRepository(authdb.GetDB())
+	aSc := service.NewAuthService(aRepo, tRepo)
+	oSc := service.NewOtpService(oRepo)
+	tSc := service.NewTokenService(tRepo)
+	aHandler := handler.NewAuthHandler(aSc, oSc, tSc)
+	oHandler := handler.NewOtpHandler(oSc, aSc, tSc)
+	tHandler := handler.NewRefreshHandler(tSc)
 
 	r := gin.Default()
 	r.ForwardedByClientIP = true
 	api := r.Group("/api/auth")
 
-	sensitive := api.Group("")
-	sensitive.Use(middleware.RateLimiterMiddleware(rdb, "30-M", "auth:limiter:auth:"))
+	public := api.Group("")
+	public.Use(middleware.RateLimiterMiddleware(rdb, "30-M", "auth:limiter:auth:"))
+	login := public.Group("/login")
+	register := public.Group("/register")
+
+	otp := api.Group("/otp")
+	otp.Use(middleware.RateLimiterMiddleware(rdb, "5-M", "auth:limiter:otp:"))
+
 	{
-		sensitive.POST("/register", authHandler.Register)
-		sensitive.POST("/login", authHandler.Login)
-		sensitive.POST("/verify", otpHandler.VerifyOTP)
-		sensitive.POST("/resend", otpHandler.ResendOTP)
-		sensitive.POST("/refresh", refreshHandler.Refresh)
+		{
+			register.POST("", aHandler.Register)
+			register.PUT("/verify", aHandler.VerifyEmail)
+		}
+		{
+			login.POST("", aHandler.Login)
+			login.POST("/verify", oHandler.VerifyLoginOTP)
+		}
+		{
+			otp.POST("/send", oHandler.SendOTP)
+		}
+
+		public.POST("/refresh", tHandler.Refresh)
 	}
 
-	resetGroup := api.Group("")
-	resetGroup.Use(middleware.RateLimiterMiddleware(rdb, "3-H", "auth:limiter:reset:"))
+	reset := api.Group("")
+	reset.Use(middleware.RateLimiterMiddleware(rdb, "5-H", "auth:limiter:reset:"))
 	{
-		resetGroup.POST("/forgot-password", authHandler.ForgotPassword)
-		resetGroup.POST("/reset-password", authHandler.ResetPassword)
-		resetGroup.PUT("/recovery/:id", middleware.ValidateUUID(), authHandler.RecoveryAccount)
+		// Восстановление пароля
+		reset.POST("/forgot-password", aHandler.ForgotPassword)
+		reset.POST("/reset-password", aHandler.ResetPassword)
 	}
 
 	protected := api.Group("")
-	protected.Use(middleware.AuthMiddleware())
+	protected.Use(middleware.AuthMiddleware(tRepo))
 	{
-		protected.GET("/me", authHandler.Me)
-		protected.GET("/sessions", refreshHandler.ListSessions)
+		protected.GET("/me", aHandler.Me)
+		protected.POST("/delete-account", oHandler.VerifyDeleteAccountOTP)
 
-		protected.POST("/change-mail", authHandler.ChangeMail)
-		protected.POST("/change-pass", authHandler.ChangePass)
+		protected.POST("/change/pass", aHandler.ChangePass)
+		protected.PUT("/change/pass/verify", oHandler.VerifyChangePasswordOTP)
+		protected.POST("/change/email", aHandler.ChangeEmail)
+		protected.PUT("/change/email/verify", oHandler.VerifyChangeMailOTP)
 
-		protected.POST("/delete/:email", authHandler.Delete)
-
-		protected.POST("/logout", authHandler.LogoutCurrent)
-		protected.POST("/logout/all", authHandler.LogoutAll)
-		protected.DELETE("/logout/:token", refreshHandler.TerminateSession)
+		protected.GET("/sessions", tHandler.ListSessions)
+		protected.POST("/logout", aHandler.LogoutCurrent)
+		protected.POST("/logout/all", aHandler.LogoutAll)
+		protected.POST("/logout/:token", tHandler.TerminateSession)
 	}
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))

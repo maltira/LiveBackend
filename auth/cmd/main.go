@@ -4,12 +4,18 @@
 // @contact.name   	@enemybye
 
 // @host 			localhost:8001
-// @BasePath 		/api
+// @BasePath 		/api/auth
+
+// @securityDefinitions.apikey BearerAuth
+// @in header
+// @name Authorization
+// @description Enter your Bearer token
 package main
 
 import (
 	"auth/config"
 	"auth/internal/router"
+	_ "auth/pkg/custom"
 	authdb "auth/pkg/database"
 	"auth/pkg/rabbitmq"
 	"auth/pkg/redis"

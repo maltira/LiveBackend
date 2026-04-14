@@ -11,6 +11,7 @@ import (
 )
 
 type ProfileService interface {
+	Create(userID uuid.UUID) error
 	Update(userID uuid.UUID, profile *dto.UpdateProfileRequest) error
 
 	GetAll() ([]models.Profile, error)
@@ -25,6 +26,20 @@ type profileService struct {
 
 func NewProfileService(repo repository.ProfileRepository) ProfileService {
 	return &profileService{repo: repo}
+}
+
+func (sc *profileService) Create(userID uuid.UUID) error {
+	name := "user_" + userID.String()[:8]
+	profile := &models.Profile{
+		ID:        userID,
+		Username:  name,
+		FullName:  name,
+		AvatarURL: "https://i.ibb.co/2Y0R1nDf/avatar-white.png",
+	}
+	settings := &models.Settings{
+		ProfileID: userID,
+	}
+	return sc.repo.Create(profile, settings)
 }
 
 func (sc *profileService) Update(userID uuid.UUID, profile *dto.UpdateProfileRequest) error {

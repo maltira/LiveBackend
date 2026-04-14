@@ -14,5 +14,6 @@ FROM alpine
 WORKDIR /app
 
 COPY --from=builder /app/main /app/main
+COPY --from=builder /build/internal/email/templates /app/internal/email/templates
 
 CMD ["/app/main"]

@@ -5,220 +5,286 @@ import (
 	"auth/internal/dto"
 	"auth/internal/models"
 	"auth/internal/service"
-	"auth/pkg/rabbitmq"
+	"auth/pkg/custom"
 	"auth/pkg/utils"
-	"encoding/json"
 	"errors"
+	"fmt"
+	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
-	"gorm.io/gorm"
 )
 
 type OtpHandler struct {
-	sc service.AuthService
+	osc service.OtpService
+	asc service.AuthService
+	tsc service.TokenService
 }
 
-func NewOtpHandler(sc service.AuthService) *OtpHandler {
-	return &OtpHandler{sc: sc}
+func NewOtpHandler(osc service.OtpService, asc service.AuthService, tsc service.TokenService) *OtpHandler {
+	return &OtpHandler{osc: osc, asc: asc, tsc: tsc}
 }
 
-// VerifyOTP
-// @Summary      Подтверждение OTP-кода
-// @Description  Проверяет введённый пользователем OTP-код
+// SendOTP
+// @Summary      Отправка OTP
+// @Description  Позволяет сгенерировать и отправить OTP-код
 // @Tags         otp
 // @Accept       json
 // @Produce      json
-// @Param        body body dto.VerifyOTPRequest true "Данные для верификации"
-// @Success      200  {boolean} true
-// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
-// @Failure      403  {object} dto.ErrorResponse "Доступ запрещён"
-// @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
-// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/verify [post]
-func (h *OtpHandler) VerifyOTP(c *gin.Context) {
-	var req dto.VerifyOTPRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
-		return
-	}
-
-	otp, err := h.sc.FindValidOTP(req.UserID, req.Code)
-	if err != nil {
-		c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.InvalidOtpError})
-		return
-	}
-
-	if err = h.sc.MarkOTPAsUsed(otp.ID); err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": OTP-код"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка отметки OTP: " + err.Error()})
-	}
-
-	user, err := h.sc.GetUserByID(req.UserID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
-			return
-		}
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка получения пользователя: " + err.Error()})
-		return
-	} else if user.ToBeDeletedAt != nil && time.Now().After(*user.ToBeDeletedAt) {
-		c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
-		return
-	}
-
-	switch req.Action {
-	case "login":
-		h.handleLoginAction(c, user)
-	case "register":
-		h.handleRegisterAction(c, user)
-	case "change-mail":
-		h.handleChangeMailAction(c, user, req.Email)
-	case "change-pass":
-		h.handleChangePasswordAction(c, user, req.Password)
-	case "delete-account":
-		h.handleDeleteAccountAction(c, user)
-	default:
-		c.JSON(404, dto.ErrorResponse{Code: 404, Error: "Указанное действие не найдено"})
-	}
-}
-
-// ResendOTP
-// @Summary      Повторить отправку OTP
-// @Description  Позволяет заново сгенерировать и отправить OTP-код
-// @Tags         otp
-// @Accept       json
-// @Produce      json
-// @Param 		 id query string true "uuid пользователя"
-// @Param 		 email query string true "email пользователя"
+// @Param 		 body body dto.SendOTPRequest true "UserID и Email"
 // @Success      200  {boolean} true
 // @Failure      400  {object} dto.ErrorResponse "Переданы некорректные параметры"
-// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
-// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/resend [post]
-func (h *OtpHandler) ResendOTP(c *gin.Context) {
-	id := c.DefaultQuery("id", "")
-	email := c.DefaultQuery("email", "")
-
-	if id == "" || email == "" {
+// @Router       /auth/otp/send [post]
+func (h *OtpHandler) SendOTP(c *gin.Context) {
+	var req dto.SendOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
+			return
+		}
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
 	}
 
-	userID, err := uuid.Parse(id)
+	err := h.osc.SendOTP(req.UserID, req.Email)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
-		return
+		log.Println("Ошибка генерации OTP:" + err.Error())
+		// не прерываемся, тк пользователь сможет переотправить код
 	}
 
-	_, _, err = h.sc.SendOTP(userID, email)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP-кода: " + err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, true)
+	// отправляем на верификацию кода
+	c.JSON(http.StatusOK, dto.OTPSentResponse{
+		UserID:  req.UserID,
+		Message: "OTP-код отправляен на указанную почту",
+	})
 }
 
-// * Вспомогательные функции
-
-func (h *OtpHandler) handleLoginAction(c *gin.Context, user *models.User) {
-	if user.ToBeDeletedAt != nil {
-		recoveryToken, err := utils.GenerateTempToken(user.ID, 15*time.Minute, "recovery_token")
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка recovery_token: " + err.Error()})
+// VerifyLoginOTP
+// @Summary      Подтверждение входа
+// @Description  Проверка OTP-кода + вход в аккаунт
+// @Tags         otp
+// @Accept       json
+// @Produce      json
+// @Param        body body dto.VerifyLoginOTPRequest true "UserID + Code"
+// @Success      200  {object} dto.LoginResponse "Токен"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
+// @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
+// @Router       /auth/login/verify [put]
+func (h *OtpHandler) VerifyLoginOTP(c *gin.Context) {
+	var req dto.VerifyLoginOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
 			return
 		}
-		// возвращем токен для восстановления аккаунта
-		c.JSON(http.StatusOK, dto.RecoveryResponse{
-			RecoveryToken: recoveryToken,
-			ToBeDeletedAt: *user.ToBeDeletedAt,
-		})
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
+		return
+	}
+
+	_, user, err := h.verifyAndMarkOTP(req.UserID, req.Code)
+	if err != nil {
+		h.handleOTPError(c, err)
 		return
 	}
 
 	ip := c.ClientIP()
 	userAgent := c.Request.UserAgent()
 	device := utils.ParseDeviceInfo(userAgent)
+	access, refresh, _ := h.tsc.GenerateTokens(user.ID, ip, userAgent, device)
 
-	access, refresh, _ := h.sc.GenerateTokens(user.ID, ip, userAgent, device)
-	utils.SetAuthCookies(c, access, refresh)
+	utils.SetAuthCookies(c, refresh)
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.LoginResponse{
+		UserID:      user.ID,
+		Email:       user.Email,
+		AccessToken: access,
+	})
 }
 
-func (h *OtpHandler) handleRegisterAction(c *gin.Context, user *models.User) {
-	user.IsVerified = true
-	err := h.sc.UpdateUser(user)
+// VerifyDeleteAccountOTP
+// @Summary      Подтверждение удаления аккаунта
+// @Description  Проверка OTP-кода + удаление аккаунта
+// @Tags         otp
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body body dto.VerifyDeleteOTPRequest true "UserID + Code + Reason"
+// @Success      200  {object} dto.MessageResponse "Аккаунт удалён"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
+// @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
+// @Router       /auth/delete-account [post]
+func (h *OtpHandler) VerifyDeleteAccountOTP(c *gin.Context) {
+	var req dto.VerifyDeleteOTPRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
+			return
+		}
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
+		return
+	}
+
+	_, user, err := h.verifyAndMarkOTP(req.UserID, req.Code)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка верификации: " + err.Error()})
+		h.handleOTPError(c, err)
 		return
 	}
 
-	ip := c.ClientIP()
-	userAgent := c.Request.UserAgent()
-	device := utils.ParseDeviceInfo(userAgent)
-
-	access, refresh, _ := h.sc.GenerateTokens(user.ID, ip, userAgent, device)
-	utils.SetAuthCookies(c, access, refresh)
-
-	// событие в очередь
-	payload := map[string]interface{}{"user_id": user.ID, "action": "user_created"}
-	if data, err := json.Marshal(payload); err == nil {
-		_ = rabbitmq.Publish("user.events", data)
-	}
-
-	c.JSON(http.StatusOK, true)
-}
-
-func (h *OtpHandler) handleChangeMailAction(c *gin.Context, user *models.User, email *string) {
-	if email == nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError + ": Почта"})
-		return
-	}
-
-	user.Email = *email
-	if err := h.sc.UpdateUser(user); err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка обновления: " + err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, true)
-}
-
-func (h *OtpHandler) handleChangePasswordAction(c *gin.Context, user *models.User, password *string) {
-	if password == nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError + ": Новый пароль"})
-		return
-	}
-
-	hash, _ := bcrypt.GenerateFromPassword([]byte(*password), bcrypt.DefaultCost)
-	user.Password = string(hash)
-	if err := h.sc.UpdateUser(user); err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка обновления: " + err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, true)
-}
-
-func (h *OtpHandler) handleDeleteAccountAction(c *gin.Context, user *models.User) {
-	deletionTime := time.Now().Add(3 * 24 * time.Hour)
-	err := h.sc.ScheduleDeletion(user.ID, deletionTime)
+	err = h.asc.SoftDeleteUserByID(user.ID, user.Email, req.Reason, "user")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка планирования удаления: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка удаления пользователя: " + err.Error()})
 		return
 	}
 
-	_ = h.sc.RevokeAllRefreshTokens(user.ID)
-	accessToken, _ := c.Cookie("access_token")
-	_ = h.sc.BlacklistAccessToken(c, accessToken)
-
+	_ = h.tsc.RevokeAllRefreshTokens(user.ID, nil)
 	utils.ClearAuthCookies(c)
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Аккаунт был удалён"})
+}
+
+// VerifyChangeMailOTP
+// @Summary      Подтверждение смены почты
+// @Description  Проверка OTP-кода + смена почты
+// @Tags         otp
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body body dto.VerifyChangeEmailRequest true "UserID + Code + NewEmail"
+// @Success      200  {object} dto.MessageResponse "Почта изменена"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
+// @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
+// @Router       /auth/change/email/verify [put]
+func (h *OtpHandler) VerifyChangeMailOTP(c *gin.Context) {
+	var req dto.VerifyChangeEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
+			return
+		}
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
+		return
+	}
+
+	_, user, err := h.verifyAndMarkOTP(req.UserID, req.Code)
+	if err != nil {
+		h.handleOTPError(c, err)
+		return
+	}
+
+	user.Email = req.NewEmail
+	user.EmailUpdatedAt = time.Now()
+	if err = h.asc.UpdateUser(user); err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка обновления: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Почта успешно изменена"})
+}
+
+// VerifyChangePasswordOTP
+// @Summary      Подтверждение смены пароля
+// @Description  Проверка OTP-кода + смена пароля
+// @Tags         otp
+// @Accept       json
+// @Produce      json
+// @Security     BearerAuth
+// @Param        body body dto.VerifyChangePassRequest true "UserID + Code + NewPassword"
+// @Success      200  {object} dto.MessageResponse "Пароль успешно изменён"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
+// @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
+// @Router       /auth/change/pass/verify [put]
+func (h *OtpHandler) VerifyChangePasswordOTP(c *gin.Context) {
+	var req dto.VerifyChangePassRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		validationError, isValidationError := custom.IsValidationError(err)
+		if isValidationError {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: validationError})
+			return
+		}
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
+		return
+	}
+
+	_, user, err := h.verifyAndMarkOTP(req.UserID, req.Code)
+	if err != nil {
+		h.handleOTPError(c, err)
+		return
+	}
+
+	if bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)) != nil {
+		c.JSON(409, dto.ErrorResponse{Code: 409, Error: "Указан неверный пароль от аккаунта"})
+		return
+	}
+
+	hash, _ := bcrypt.GenerateFromPassword([]byte(req.NewPassword), bcrypt.DefaultCost)
+	user.Password = string(hash)
+	user.PasswordUpdatedAt = time.Now()
+	if err = h.asc.UpdateUser(user); err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка обновления: " + err.Error()})
+		return
+	}
+
+	if err = h.tsc.RevokeAllRefreshTokens(user.ID, nil); err != nil {
+		log.Printf("Warning: failed to revoke refresh tokens for user %s: %v", user.ID, err)
+		// Не прерываем процесс удаления из-за ошибки с токенами
+	}
+	utils.ClearAuthCookies(c)
+
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Пароль успешно изменён"})
+}
+
+// ! Вспомогательные функции
+
+// verifyAndMarkOTP - общая логика проверки и пометки OTP как использованного
+func (h *OtpHandler) verifyAndMarkOTP(userID uuid.UUID, code string) (*models.OTPCode, *models.User, error) {
+	// находим валидный OTP
+	otp, err := h.osc.FindValidOTP(userID, code)
+	if err != nil {
+		return nil, nil, errors.New("invalid or expired otp")
+	}
+
+	// помечаем OTP как использованный
+	if err = h.osc.MarkOTPAsUsed(otp.ID); err != nil {
+		return nil, nil, fmt.Errorf("failed to mark otp as used: %w", err)
+	}
+
+	// получаем пользователя
+	user, err := h.asc.FindByID(userID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("user not found: %w", err)
+	}
+
+	return otp, user, nil
+}
+
+// handleOTPError — централизованная обработка ошибок OTP
+func (h *OtpHandler) handleOTPError(c *gin.Context, err error) {
+	switch {
+	case err.Error() == "invalid or expired otp":
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Code:  400,
+			Error: config.InvalidOtpError,
+		})
+	case strings.Contains(err.Error(), "user not found"):
+		c.JSON(http.StatusNotFound, dto.ErrorResponse{
+			Code:  404,
+			Error: config.NotFoundError + ": Пользователь",
+		})
+	default:
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
+			Code:  500,
+			Error: "Ошибка обработки OTP: " + err.Error(),
+		})
+	}
 }

@@ -14,21 +14,20 @@ import (
 )
 
 type RefreshHandler struct {
-	sc service.AuthService
+	tsc service.TokenService
 }
 
-func NewRefreshHandler(sc service.AuthService) *RefreshHandler {
-	return &RefreshHandler{sc: sc}
+func NewRefreshHandler(tsc service.TokenService) *RefreshHandler {
+	return &RefreshHandler{tsc: tsc}
 }
 
 // Refresh
-// @Summary      Обновление access-токена
-// @Description  Обновляет access-токен с помощью refresh-токена из cookie. Выдаёт новые токены в cookie.
+// @Summary      Обновление токенов
+// @Description  Обновляет access-токен и refresh-токен
 // @Tags         token
 // @Produce      json
-// @Success      200  {boolean} true
+// @Success      200  {object} dto.TokenResponse "Access токен"
 // @Failure      401  {object} dto.ErrorResponse "Неавторизован"
-// @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/refresh [post]
 func (h *RefreshHandler) Refresh(c *gin.Context) {
@@ -37,32 +36,37 @@ func (h *RefreshHandler) Refresh(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: config.UnauthorizedError})
 		return
 	}
-	access, refresh, err := h.sc.Refresh(refreshToken)
+
+	access, refresh, err := h.tsc.Refresh(refreshToken)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(404, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": refresh_token"})
+		if err.Error() == "invalid refresh token" {
+			utils.ClearAuthCookies(c)
+			c.JSON(401, dto.ErrorResponse{Code: 401, Error: config.InvalidTokenError})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка обновления токенов: " + err.Error()})
 		return
 	}
 
-	utils.SetAuthCookies(c, access, refresh)
+	utils.SetAuthCookies(c, refresh)
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.TokenResponse{
+		AccessToken: access,
+		TokenType:   "Bearer",
+	})
 }
 
 // TerminateSession
 // @Summary      Закончить конкретную сессию
 // @Description  Заканчивает указанную сессию
-// @Tags         token
+// @Tags         logout
 // @Produce      json
-// @Success      200  {boolean} true
+// @Security     BearerAuth
 // @Param        token path string true "Refresh-токен сессии, которую нужно завершить"
-// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
-// @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
+// @Success      200  {object} dto.MessageResponse "Сессия завершена"
+// @Failure      400  {object} dto.ErrorResponse "Переданы некорректные данные"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/logout/{token} [delete]
+// @Router       /auth/logout/{token} [post]
 func (h *RefreshHandler) TerminateSession(c *gin.Context) {
 	token := c.Param("token")
 	if token == "" {
@@ -70,17 +74,13 @@ func (h *RefreshHandler) TerminateSession(c *gin.Context) {
 		return
 	}
 
-	err := h.sc.RevokeRefreshToken(token)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(404, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": refresh_token"})
-			return
-		}
+	err := h.tsc.RevokeRefreshToken(token)
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		c.JSON(500, dto.ErrorResponse{Code: 500, Error: "Ошибка удаления токена: " + err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Сессия завершена"})
 }
 
 // ListSessions
@@ -88,30 +88,18 @@ func (h *RefreshHandler) TerminateSession(c *gin.Context) {
 // @Description  Возвращает список всех устройств/браузеров, с которых пользователь сейчас залогинен (активные refresh-токены)
 // @Tags         token
 // @Produce      json
-// @Success      200  {array} dto.SessionResponse "Список сессий"
-// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
+// @Security     BearerAuth
+// @Success      200  {array} models.RefreshToken "Список сессий"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/sessions [get]
 func (h *RefreshHandler) ListSessions(c *gin.Context) {
 	userID := c.MustGet("userID").(uuid.UUID)
 
-	sessions, err := h.sc.ListActiveSessions(userID)
+	sessions, err := h.tsc.ListActiveSessions(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
 
-	var response []dto.SessionResponse
-	for _, s := range sessions {
-		response = append(response, dto.SessionResponse{
-			ID:           s.ID,
-			RefreshToken: s.Token,
-			Device:       s.Device,
-			IP:           s.IP,
-			UserAgent:    s.UserAgent,
-			CreatedAt:    s.ExpiresAt.Add(-config.Env.RefreshTokenDuration),
-			ExpiresAt:    s.ExpiresAt,
-		})
-	}
-	c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, sessions)
 }

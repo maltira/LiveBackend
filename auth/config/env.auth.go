@@ -12,6 +12,9 @@ type AuthConfig struct {
 	JWTSecret            []byte
 	AccessTokenDuration  time.Duration
 	RefreshTokenDuration time.Duration
+	PassTokenDuration    time.Duration
+
+	FrontendURL string
 
 	DBHost     string
 	DBPort     string
@@ -19,6 +22,9 @@ type AuthConfig struct {
 	DBPassword string
 	DBSSLMode  string
 	DBName     string
+
+	EmailUsername string
+	EmailPassword string
 
 	AppPort      string
 	RedisAddr    string
@@ -28,10 +34,8 @@ type AuthConfig struct {
 var Env *AuthConfig
 
 func InitEnv() {
-	if err := godotenv.Load("../.env"); err != nil {
-		if err = godotenv.Load(".env"); err != nil {
-			panic(".env file not found")
-		}
+	if err := godotenv.Load(".env"); err != nil {
+		panic(".env file not found")
 	}
 
 	Env = &AuthConfig{
@@ -39,13 +43,18 @@ func InitEnv() {
 
 		AccessTokenDuration:  getDuration("JWT_ACCESS_DURATION", 15*time.Minute),
 		RefreshTokenDuration: getDuration("JWT_REFRESH_DURATION", 30*24*time.Hour),
+		PassTokenDuration:    getDuration("PASS_TOKEN_DURATION", 15*time.Minute),
+
+		FrontendURL: os.Getenv("FRONTEND_URL"),
 
 		DBHost:     os.Getenv("DB_HOST"),
 		DBPort:     os.Getenv("DB_PORT"),
 		DBUser:     os.Getenv("DB_USER"),
 		DBPassword: os.Getenv("DB_PASSWORD"),
-		DBSSLMode:  os.Getenv("DB_SSLMODE"),
 		DBName:     os.Getenv("DB_AUTH_NAME"),
+
+		EmailUsername: os.Getenv("EMAIL_USERNAME"),
+		EmailPassword: os.Getenv("EMAIL_PASSWORD"),
 
 		AppPort:      os.Getenv("PORT_AUTH"),
 		RedisAddr:    os.Getenv("REDIS_ADDR"),

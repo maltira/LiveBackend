@@ -3,43 +3,11 @@ package utils
 import (
 	"auth/config"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
-
-func GenerateTempToken(userID uuid.UUID, duration time.Duration, action string) (string, error) {
-	claims := jwt.MapClaims{
-		"id":     userID.String(),
-		"action": action,
-		"exp":    time.Now().Add(duration).Unix(),
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(config.Env.JWTSecret)
-	if err != nil {
-		return "", errors.New(fmt.Sprintf("Ошибка генерации токена, повторите попытку: %v", err))
-	}
-	return tokenString, nil
-}
-
-func ValidateTempToken(tokenString string) (jwt.MapClaims, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return config.Env.JWTSecret, nil
-	})
-	if err != nil || !token.Valid {
-		return nil, err
-	}
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if ok && token.Valid {
-		return claims, nil
-	}
-	return nil, errors.New("invalid token")
-}
 
 func ParseToken(tokenString string) (*jwt.Token, error) {
 	if tokenString == "" {
@@ -48,4 +16,21 @@ func ParseToken(tokenString string) (*jwt.Token, error) {
 	return jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
 		return config.Env.JWTSecret, nil
 	})
+}
+
+func GenerateRefreshTokenString() (string, time.Time) {
+	refreshToken := uuid.NewString()
+	expiresAt := time.Now().Add(config.Env.RefreshTokenDuration)
+	return refreshToken, expiresAt
+}
+
+func GenerateAccessToken(userID uuid.UUID) (string, error) {
+	access := jwt.NewWithClaims(
+		jwt.SigningMethodHS256,
+		jwt.MapClaims{
+			"id":  userID,
+			"exp": time.Now().Add(config.Env.AccessTokenDuration).Unix(),
+		},
+	)
+	return access.SignedString(config.Env.JWTSecret)
 }

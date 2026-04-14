@@ -10,7 +10,7 @@ import (
 )
 
 type ProfileRepository interface {
-	Create(user *models.Profile) error
+	Create(user *models.Profile, settings *models.Settings) error
 	Update(userID uuid.UUID, updates map[string]interface{}) error
 
 	GetAll() ([]models.Profile, error)
@@ -29,8 +29,21 @@ func NewProfileRepository(db *gorm.DB) ProfileRepository {
 	return &profileRepository{db: db}
 }
 
-func (r *profileRepository) Create(user *models.Profile) error {
-	return r.db.Create(user).Error
+func (r *profileRepository) Create(user *models.Profile, settings *models.Settings) error {
+	tx := r.db.Begin()
+
+	err := tx.Create(&user).Error
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	err = tx.Create(&settings).Error
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	tx.Commit()
+	return nil
 }
 func (r *profileRepository) Update(userID uuid.UUID, updates map[string]interface{}) error {
 	return r.db.Model(models.Profile{}).Where("id = ?", userID).Updates(updates).Error

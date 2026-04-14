@@ -1,65 +1,76 @@
 package dto
 
 import (
-	"time"
-
 	"github.com/google/uuid"
 )
 
 // * Requests
 
-type AuthRequest struct {
+type RegisterRequest struct {
 	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
+	Password string `json:"password" binding:"required,strong_password"`
+}
+type LoginRequest struct {
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required"`
 }
 
-type VerifyOTPRequest struct {
+type VerifyLoginOTPRequest struct {
+	UserID uuid.UUID `json:"user_id" binding:"required"`
+	Code   string    `json:"code" binding:"required,len=6"`
+}
+
+type VerifyDeleteOTPRequest struct {
+	UserID uuid.UUID `json:"user_id" binding:"required"`
+	Code   string    `json:"code" binding:"required,len=6"`
+	Reason string    `json:"reason" binding:"max=255"`
+}
+type VerifyChangeEmailRequest struct {
 	UserID   uuid.UUID `json:"user_id" binding:"required"`
-	Email    *string   `json:"email"`
-	Password *string   `json:"password"`
 	Code     string    `json:"code" binding:"required,len=6"`
-	Action   string    `json:"action" binding:"required"`
+	NewEmail string    `json:"new_email" binding:"required,email"`
+}
+
+type VerifyChangePassRequest struct {
+	UserID      uuid.UUID `json:"user_id" binding:"required"`
+	Code        string    `json:"code" binding:"required,len=6"`
+	Password    string    `json:"password" binding:"required"`
+	NewPassword string    `json:"new_password" binding:"required,nefield=Password,strong_password"`
+}
+
+type ForgotPasswordRequest struct {
+	Email string `json:"email" binding:"required,email"`
 }
 
 type ResetPasswordRequest struct {
-	UserID      uuid.UUID `json:"user_id" binding:"required"`
-	NewPassword string    `json:"new_password" binding:"required,min=8"`
+	Token           string `json:"token" binding:"required"`
+	Password        string `json:"new_password" binding:"required"`
+	ConfirmPassword string `json:"confirm_password" binding:"required,eqfield=Password,strong_password"`
 }
 
-type TempTokenRequest struct {
-	TempToken string `json:"temp_token" binding:"required"`
-}
-
-type DeleteAccountRequest struct {
-	Password string `json:"password" binding:"required,min=8"`
+type SendOTPRequest struct {
+	UserID uuid.UUID `json:"user_id" binding:"required,uuid"`
+	Email  string    `json:"email" binding:"required,email"`
 }
 
 type ChangeEmailRequest struct {
-	Email string `json:"email" binding:"required,email"`
+	NewEmail string `json:"new_email" binding:"required,email"`
 }
+
 type ChangePasswordRequest struct {
-	Password    string `json:"password" binding:"required,min=8"`
-	NewPassword string `json:"new_password" binding:"required,min=8"`
+	Password    string `json:"password" binding:"required"`
+	NewPassword string `json:"new_password" binding:"required,strong_password,nefield=Password"`
 }
 
 // * Responses
-
-type AuthResponse struct {
-	UserID  uuid.UUID `json:"user_id"`
-	Message string    `json:"message"`
-}
 
 type OTPSentResponse struct {
 	UserID  uuid.UUID `json:"user_id"`
 	Message string    `json:"message"`
 }
 
-type TempTokenResponse struct {
-	UserID    uuid.UUID `json:"user_id"`
-	TempToken string    `json:"temp_token"`
-}
-
-type RecoveryResponse struct {
-	ToBeDeletedAt time.Time `json:"to_be_deleted_at"`
-	RecoveryToken string    `json:"recovery_token"`
+type LoginResponse struct {
+	UserID      uuid.UUID `json:"user_id"`
+	Email       string    `json:"email"`
+	AccessToken string    `json:"access_token"`
 }
