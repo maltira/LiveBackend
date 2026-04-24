@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"user/config"
 	"user/internal/models/dto"
 	"user/internal/service"
 	"user/pkg/websocket"
@@ -21,42 +22,51 @@ func NewProfileHandler(sc service.ProfileService) *ProfileHandler {
 	return &ProfileHandler{sc: sc}
 }
 
+// CreateProfile
+// @Summary      Создать профиль
+// @Description  Создаёт новый профиль пользователя
+// @Tags         profile
+// @Produce      json
+// @Success      200  {object} dto.MessageResponse "Профиль создан"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
+// @Router       /user/profile [post]
 func (h *ProfileHandler) CreateProfile(c *gin.Context) {
-	var req struct {
-		UserID string `json:"user_id"`
-	}
+	var req dto.CreateProfileRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: err.Error()})
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError + ": " + err.Error()})
 		return
 	}
-	userID := uuid.MustParse(req.UserID)
-
-	err := h.sc.Create(userID)
+	userID, err := uuid.Parse(req.UserID)
 	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError + ": " + err.Error()})
+		return
+	}
+
+	if err = h.sc.Create(userID); err != nil {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, true)
+	c.JSON(http.StatusCreated, dto.MessageResponse{Success: true, Message: "Профиль успешно создан"})
 }
 
-// GetProfile
+// GetCurrentProfile
 // @Summary      Получить профиль текущего пользователя
 // @Description  Возвращает полный профиль авторизованного пользователя (username, full_name, bio, avatar_url и т.д.)
 // @Tags         profile
 // @Produce      json
+// @Security	 BearerAuth
 // @Success      200  {object} models.Profile "Профиль пользователя"
-// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
 // @Failure      404  {object} dto.ErrorResponse "Профиль не найден"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /user/profile [get]
-func (h *ProfileHandler) GetProfile(c *gin.Context) {
+func (h *ProfileHandler) GetCurrentProfile(c *gin.Context) {
 	id := c.MustGet("userID").(uuid.UUID)
-
 	profile, err := h.sc.FindByID(id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: "Пользователь не найден"})
+			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
@@ -65,26 +75,31 @@ func (h *ProfileHandler) GetProfile(c *gin.Context) {
 	c.JSON(http.StatusOK, profile)
 }
 
-// FindProfile
+// GetProfileByID
 // @Summary      Получить профиль пользователя по ID
 // @Description  Возвращает публичные данные профиля другого пользователя
 // @Tags         profile
 // @Produce      json
+// @Security	 BearerAuth
 // @Param        id   path   string  true   "ID пользователя (UUID)" Format(uuid)
 // @Success      200  {object} models.Profile "Публичный профиль"
-// @Failure      400  {object} dto.ErrorResponse "Некорректный ID"
-// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      404  {object} dto.ErrorResponse "Пользователь не найден"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /user/profile/{id} [get]
-func (h *ProfileHandler) FindProfile(c *gin.Context) {
+func (h *ProfileHandler) GetProfileByID(c *gin.Context) {
 	id := c.Param("id")
-	userID := uuid.MustParse(id)
+
+	userID, err := uuid.Parse(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
 
 	user, err := h.sc.FindByID(userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: "Пользователь не найден"})
+			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
@@ -98,8 +113,8 @@ func (h *ProfileHandler) FindProfile(c *gin.Context) {
 // @Description  Возвращает список всех пользователей
 // @Tags         profile
 // @Produce      json
+// @Security	 BearerAuth
 // @Success      200  {array} models.Profile "Список профилей"
-// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /user/profile/all [get]
 func (h *ProfileHandler) FindAll(c *gin.Context) {
@@ -111,12 +126,30 @@ func (h *ProfileHandler) FindAll(c *gin.Context) {
 	c.JSON(http.StatusOK, profiles)
 }
 
-func (h *ProfileHandler) SearchProfiles(c *gin.Context) {
-	query := c.Query("q")
-	l := c.DefaultQuery("limit", "10")
+// GetProfilesByQuery
+// @Summary      Список профилей по запросу
+// @Description  Возвращает список пользователей, удовлетворящих запросу
+// @Tags         profile
+// @Produce      json
+// @Security	 BearerAuth
+// @Success      200  {array} models.Profile "Список профилей"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
+// @Router       /user/profile/search [get]
+func (h *ProfileHandler) GetProfilesByQuery(c *gin.Context) {
+	query := c.Query("q")              // сам запрос
+	l := c.DefaultQuery("limit", "10") // лимит кол-ва профилей
 
-	limit, _ := strconv.Atoi(l)
-	if limit < 1 || limit > 20 {
+	if query == "" {
+		c.JSON(400, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError + ": query is empty"})
+		return
+	}
+
+	limit, err := strconv.Atoi(l)
+	if err != nil {
+		c.JSON(400, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError + ": limit"})
+		return
+	} else if limit < 1 || limit > 20 {
 		limit = 5
 	}
 
@@ -134,30 +167,43 @@ func (h *ProfileHandler) SearchProfiles(c *gin.Context) {
 // @Tags         profile
 // @Accept       json
 // @Produce      json
+// @Security	 BearerAuth
 // @Param        body body dto.UpdateProfileRequest true "Новые данные профиля"
-// @Success      200  {boolean} true
-// @Failure      400  {object} dto.ErrorResponse "Некорректные данные или username занят"
-// @Failure      401  {object} dto.ErrorResponse "Неавторизован"
+// @Success      200  {object} dto.MessageResponse "Данные изменены"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /user/profile [put]
 func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 	id := c.MustGet("userID").(uuid.UUID)
-
-	var req dto.UpdateProfileRequest
+	var req map[string]interface{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректные данные в теле запроса"})
 		return
 	}
+
 	if err := h.sc.Update(id, &req); err != nil {
-		if err.Error() == "это имя пользователя занято" {
-			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "это имя пользователя занято"})
-			return
+		errorText := ""
+		switch err.Error() {
+		case "username error":
+			errorText = "Имя пользователя должно содержать от 4 до 16 символов"
+		case "username exists":
+			errorText = "Имя пользователя уже занято"
+		case "full_name error":
+			errorText = "Имя должно содержать от 1 до 100 символов"
+		case "bio error":
+			errorText = "Описание должно содержить не более 500 символов"
+		case "no columns to update":
+			errorText = "Не передано ни одного поля"
 		}
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		if errorText != "" {
+			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: errorText})
+		} else {
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		}
 		return
 	}
 
-	c.JSON(http.StatusOK, true)
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Новые данные успешно сохранены"})
 }
 
 // IsUsernameFree
@@ -165,16 +211,16 @@ func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 // @Description  Проверяет, свободен ли указанный username для использования
 // @Tags         profile
 // @Produce      json
-// @Param        username path string true "Желаемый username"
-// @Success      200  {object} bool "true — свободен, false — занят"
-// @Failure      400  {object} dto.ErrorResponse "Некорректный username"
+// @Security	 BearerAuth
+// @Param        u query string true "Username"
+// @Success      200  {boolean} bool "true — свободен, false — занят"
+// @Failure      400  {object} dto.ErrorResponse "Некорректные данные"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
-// @Router       /user/profile/username/{username}/check [get]
+// @Router       /user/profile/check-username [get]
 func (h *ProfileHandler) IsUsernameFree(c *gin.Context) {
-	username := c.Param("username")
-
-	if len(username) == 0 {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "invalid username"})
+	username := c.Query("u")
+	if len(username) < 4 {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Имя пользователя должно содержать от 4 до 16 символов"})
 		return
 	}
 
@@ -186,13 +232,28 @@ func (h *ProfileHandler) IsUsernameFree(c *gin.Context) {
 	c.JSON(http.StatusOK, isFree)
 }
 
+// GetUserStatus
+// @Summary      Проверка статуса online
+// @Description  Проверяет, в сети ли сейчас пользователь
+// @Tags         profile
+// @Produce      json
+// @Security	 BearerAuth
+// @Param        u path string true "Username"
+// @Success      200  {object} dto.ProfileStatusResponse "Данные об онлайне"
+// @Failure      404  {object} dto.ErrorResponse "Запись не найдена"
+// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
+// @Router       /user/profile/check-status/{id} [get]
 func (h *ProfileHandler) GetUserStatus(c *gin.Context) {
-	profileID := c.Param("id")
-	profileUUID := uuid.MustParse(profileID)
+	id := c.Param("id")
+	profileID := uuid.MustParse(id)
 
-	profile, err := h.sc.FindByID(profileUUID)
+	profile, err := h.sc.FindByID(profileID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
+		} else {
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		}
 		return
 	}
 
@@ -204,14 +265,10 @@ func (h *ProfileHandler) GetUserStatus(c *gin.Context) {
 		return
 	}
 
-	isOnline := websocket.IsClientOnline(profileUUID)
+	isOnline := websocket.IsClientOnline(profileID)
 	response := dto.ProfileStatusResponse{
 		Online:   isOnline,
-		LastSeen: nil,
-	}
-
-	if !isOnline {
-		response.LastSeen = &profile.LastSeen
+		LastSeen: &profile.LastSeen,
 	}
 
 	c.JSON(http.StatusOK, response)

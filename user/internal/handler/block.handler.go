@@ -122,5 +122,5 @@ func (h *BlockHandler) UnblockUser(c *gin.Context) {
 		log.Printf("Failed to publish unblock event: %v", err)
 	}
 
-	c.JSON(http.StatusOK, dto.MessageResponse{Message: "Пользователь удалён из черного списка"})
+	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Пользователь удалён из черного списка"})
 }

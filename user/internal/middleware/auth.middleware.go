@@ -1,8 +1,11 @@
 package middleware
 
 import (
+	"auth/pkg/utils"
 	"errors"
 	"net/http"
+	"strings"
+	"time"
 	"user/config"
 	"user/pkg/redis"
 
@@ -11,41 +14,44 @@ import (
 	"github.com/google/uuid"
 )
 
-func AuthMiddleware() gin.HandlerFunc {
+func AuthMiddleware(repo repository.TokenRepository) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		accessToken, err := c.Cookie("access_token")
-		if err != nil || accessToken == "" {
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
-		token, err := parseToken(accessToken)
-		if err != nil || !token.Valid {
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		if tokenString == authHeader { // не было префикса Bearer
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		parsedToken, err := utils.ParseToken(tokenString)
+		if err != nil || !parsedToken.Valid {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired token"})
 			return
 		}
-		claims, _ := token.Claims.(jwt.MapClaims)
 
-		jti, _ := claims["jti"].(string)
-		if jti != "" {
-			key := "auth:blacklist:access:" + jti
-			exists, _ := redis.UserRedis.Get(c.Request.Context(), key).Result()
-			if exists != "" { // ключ существует -> токен отозван
-				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token revoked"})
-				return
-			}
+		claims, ok := parsedToken.Claims.(jwt.MapClaims)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
+			return
+		}
+
+		refreshToken, err := c.Cookie("refresh_token")
+		if err != nil || refreshToken == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired session"})
+			return
+		}
+		rt, err := repo.FindRefreshToken(refreshToken)
+		if err != nil || time.Now().After(rt.ExpiresAt) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired session"})
+			return
 		}
 
 		c.Set("userID", uuid.MustParse(claims["id"].(string)))
 		c.Next()
 	}
-}
-
-func parseToken(tokenString string) (*jwt.Token, error) {
-	if tokenString == "" {
-		return nil, errors.New("token is empty")
-	}
-	return jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-		return config.Env.JWTSecret, nil
-	})
 }

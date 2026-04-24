@@ -32,7 +32,7 @@ func NewRefreshHandler(tsc service.TokenService) *RefreshHandler {
 // @Router       /auth/refresh [post]
 func (h *RefreshHandler) Refresh(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
-	if err != nil || refreshToken == "" {
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: config.UnauthorizedError})
 		return
 	}
