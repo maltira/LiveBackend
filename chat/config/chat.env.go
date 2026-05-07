@@ -2,8 +2,6 @@ package config
 
 import (
 	"os"
-
-	"github.com/joho/godotenv"
 )
 
 type Config struct {
@@ -23,10 +21,6 @@ type Config struct {
 var Env *Config
 
 func InitEnv() {
-	if err := godotenv.Load(".env"); err != nil {
-		panic(".env file not found")
-	}
-
 	Env = &Config{
 		JWTSecret: []byte(os.Getenv("JWT_SECRET")),
 

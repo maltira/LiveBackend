@@ -3,6 +3,7 @@ package handler
 import (
 	"log"
 	"net/http"
+	"user/config"
 	"user/internal/models/dto"
 	"user/internal/service"
 	"user/pkg/utils"
@@ -29,8 +30,12 @@ func NewBlockHandler(sc service.BlockService) *BlockHandler {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
 // @Router       /user/block/all [get]
 func (h *BlockHandler) GetAllBlocks(c *gin.Context) {
-	id := c.MustGet("userID").(uuid.UUID)
-	blocks, err := h.sc.GetAllBlocks(id)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
+	blocks, err := h.sc.GetAllBlocks(userID)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
@@ -52,11 +57,15 @@ func (h *BlockHandler) GetAllBlocks(c *gin.Context) {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
 // @Router       /user/block/check [get]
 func (h *BlockHandler) IsBlocked(c *gin.Context) {
-	meID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
 	target := c.Param("id")
 	targetID := uuid.MustParse(target)
 
-	isBlocked, err := h.sc.IsBlock(targetID, meID)
+	isBlocked, err := h.sc.IsBlock(targetID, userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
@@ -77,18 +86,22 @@ func (h *BlockHandler) IsBlocked(c *gin.Context) {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
 // @Router       /user/block/{id} [post]
 func (h *BlockHandler) BlockUser(c *gin.Context) {
-	id := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
 	blockID := c.Param("id")
 	blockUUID := uuid.MustParse(blockID)
 
-	blockedProfile, err := h.sc.BlockUser(id, blockUUID)
+	blockedProfile, err := h.sc.BlockUser(userID, blockUUID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
 
 	// Публикация события (is_blocked: true)
-	if err = utils.PublishBlockEvent(id, blockUUID, true); err != nil {
+	if err = utils.PublishBlockEvent(userID, blockUUID, true); err != nil {
 		log.Printf("Failed to publish block event: %v", err)
 	}
 
@@ -107,18 +120,22 @@ func (h *BlockHandler) BlockUser(c *gin.Context) {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
 // @Router       /user/block/{id} [delete]
 func (h *BlockHandler) UnblockUser(c *gin.Context) {
-	id := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
 	blockedID := c.Param("id")
 	blockedUUID := uuid.MustParse(blockedID)
 
-	err := h.sc.UnblockUser(id, blockedUUID)
+	err = h.sc.UnblockUser(userID, blockedUUID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
 
 	// Публикация события (is_blocked: false)
-	if err = utils.PublishBlockEvent(id, blockedUUID, false); err != nil {
+	if err = utils.PublishBlockEvent(userID, blockedUUID, false); err != nil {
 		log.Printf("Failed to publish unblock event: %v", err)
 	}
 

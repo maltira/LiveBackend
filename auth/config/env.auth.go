@@ -4,8 +4,6 @@ import (
 	"log"
 	"os"
 	"time"
-
-	"github.com/joho/godotenv"
 )
 
 type AuthConfig struct {
@@ -34,10 +32,6 @@ type AuthConfig struct {
 var Env *AuthConfig
 
 func InitEnv() {
-	if err := godotenv.Load(".env"); err != nil {
-		panic(".env file not found")
-	}
-
 	Env = &AuthConfig{
 		JWTSecret: []byte(os.Getenv("JWT_SECRET")),
 

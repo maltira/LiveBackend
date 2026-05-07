@@ -28,9 +28,13 @@ func NewSettingsHandler(sc service.SettingsService) *SettingsHandler {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
 // @Router       /user/settings [get]
 func (h *SettingsHandler) GetSettings(c *gin.Context) {
-	id := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
 
-	settings, err := h.sc.GetSettings(id)
+	settings, err := h.sc.GetSettings(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
@@ -52,7 +56,11 @@ func (h *SettingsHandler) GetSettings(c *gin.Context) {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
 // @Router       /user/settings/status [put]
 func (h *SettingsHandler) UpdateVisibleStatus(c *gin.Context) {
-	id := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
 
 	visible := c.Query("visible")
 	if visible == "" {
@@ -60,7 +68,7 @@ func (h *SettingsHandler) UpdateVisibleStatus(c *gin.Context) {
 		return
 	}
 
-	err := h.sc.UpdateVisibleStatus(id, visible == "true")
+	err = h.sc.UpdateVisibleStatus(userID, visible == "true")
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
@@ -82,7 +90,11 @@ func (h *SettingsHandler) UpdateVisibleStatus(c *gin.Context) {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка"
 // @Router       /user/settings/birth [put]
 func (h *SettingsHandler) UpdateVisibleBirthDate(c *gin.Context) {
-	id := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
 
 	visible := c.Query("visible")
 	if visible != "all" && visible != "nobody" {
@@ -90,7 +102,7 @@ func (h *SettingsHandler) UpdateVisibleBirthDate(c *gin.Context) {
 		return
 	}
 
-	err := h.sc.UpdateVisibleBirthDate(id, visible)
+	err = h.sc.UpdateVisibleBirthDate(userID, visible)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return

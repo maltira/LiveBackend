@@ -30,9 +30,6 @@ import (
 	"user/pkg/redis"
 
 	_ "user/docs"
-
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func main() {
@@ -42,8 +39,6 @@ func main() {
 	rabbitmq.InitRabbitMQ()
 
 	r := router.InitRouter()
-
-	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	// ? Запуск процессов и сервера
 	port := config.Env.AppPort

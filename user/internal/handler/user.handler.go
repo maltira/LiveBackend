@@ -62,8 +62,13 @@ func (h *ProfileHandler) CreateProfile(c *gin.Context) {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /user/profile [get]
 func (h *ProfileHandler) GetCurrentProfile(c *gin.Context) {
-	id := c.MustGet("userID").(uuid.UUID)
-	profile, err := h.sc.FindByID(id)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
+
+	profile, err := h.sc.FindByID(userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
@@ -174,14 +179,18 @@ func (h *ProfileHandler) GetProfilesByQuery(c *gin.Context) {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /user/profile [put]
 func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
-	id := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
 	var req map[string]interface{}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err = c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректные данные в теле запроса"})
 		return
 	}
 
-	if err := h.sc.Update(id, &req); err != nil {
+	if err = h.sc.Update(userID, &req); err != nil {
 		errorText := ""
 		switch err.Error() {
 		case "username error":

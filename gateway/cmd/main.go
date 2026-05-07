@@ -1,60 +1,58 @@
 package main
 
 import (
-	"fmt"
+	"context"
+	"errors"
 	"gateway/config"
-	"gateway/middleware"
+	"gateway/internal/middleware"
+	"gateway/internal/router"
+	"gateway/pkg/redis"
+	"log"
 	"net/http"
-	"net/http/httputil"
-	"net/url"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
-// TODO:
-// 1. Изменение пароля
-// 2. 2FA (TOTP || Google Authenticator)
-
 func main() {
 	config.InitEnv()
+	redis.InitGatewayRedis()
+
 	r := gin.Default()
+	r.Use(middleware.CORSMiddleware())
 
-	api := r.Group("/api")
-	api.Use(middleware.CORSMiddleware())
+	// Настройка всех маршрутов
+	router.SetupRoutes(r)
 
-	authGroup := api.Group("/auth")
-	userGroup := api.Group("/user")
-	chatGroup := api.Group("/chat")
-	proxyToBackend("http://auth:"+config.Env.PortAuth, authGroup)
-	proxyToBackend("http://user:"+config.Env.PortUser, userGroup)
-	proxyToBackend("http://chat:"+config.Env.PortChat, chatGroup)
-
-	err := r.Run(":" + config.Env.AppPort)
-	if err != nil {
-		panic(fmt.Sprintf("Не удалось запустить GatewayService: %s", err))
-	}
-}
-
-func proxyToBackend(backendURL string, group *gin.RouterGroup) {
-	target, err := url.Parse(backendURL)
-	if err != nil {
-		panic(fmt.Sprintf("Некорректный URL бэкенда %q: %v", backendURL, err))
+	port := config.Env.AppPort
+	srv := &http.Server{
+		Addr:    ":" + port,
+		Handler: r,
 	}
 
-	proxy := httputil.NewSingleHostReverseProxy(target)
+	go func() {
+		log.Printf("Gateway service starting on %s", srv.Addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			panic(err)
+		}
+	}()
 
-	proxy.Director = func(req *http.Request) {
-		req.URL.Scheme = target.Scheme
-		req.URL.Host = target.Host
-		req.Host = target.Host
+	// Блокируем main, ждём сигнал завершения
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("[Shutting down]")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Printf("HTTP server shutdown error: %v", err)
 	}
 
-	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
-		w.WriteHeader(http.StatusBadGateway)
-		_, _ = fmt.Fprintf(w, "Backend service unavailable: %v", err)
-	}
-
-	group.Any("/*path", func(c *gin.Context) {
-		proxy.ServeHTTP(c.Writer, c.Request)
-	})
+	redis.Close()
 }

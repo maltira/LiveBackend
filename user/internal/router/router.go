@@ -39,13 +39,14 @@ func InitRouter() *gin.Engine {
 }
 
 func initProfileRoutes(api *gin.RouterGroup, h *handler.ProfileHandler) {
-	api.POST("/profile", h.CreateProfile)
-	userGroup := api.Group("/profile").Use(middleware.AuthMiddleware())
+
+	userGroup := api.Group("/profile")
 	{
 		userGroup.GET("/all", h.FindAll)
 		userGroup.GET("search", h.GetProfilesByQuery)
 		userGroup.GET("", h.GetCurrentProfile)
 		userGroup.PUT("", h.UpdateProfile)
+		userGroup.POST("", h.CreateProfile)
 		userGroup.GET("/:id", middleware.ValidateUUID(), h.GetProfileByID)
 
 		userGroup.GET("/check-username", h.IsUsernameFree)
@@ -54,7 +55,7 @@ func initProfileRoutes(api *gin.RouterGroup, h *handler.ProfileHandler) {
 }
 
 func initBlockRoutes(api *gin.RouterGroup, h *handler.BlockHandler) {
-	blockGroup := api.Group("/block").Use(middleware.AuthMiddleware())
+	blockGroup := api.Group("/block")
 	{
 		blockGroup.GET("/all", h.GetAllBlocks)                               // Список заблокированных пользователей
 		blockGroup.POST("/:id", middleware.ValidateUUID(), h.BlockUser)      // Заблокировать пользователя
@@ -64,7 +65,7 @@ func initBlockRoutes(api *gin.RouterGroup, h *handler.BlockHandler) {
 }
 
 func initSettingsRoutes(api *gin.RouterGroup, h *handler.SettingsHandler) {
-	setGroup := api.Group("/settings").Use(middleware.AuthMiddleware())
+	setGroup := api.Group("/settings")
 	{
 		setGroup.GET("", h.GetSettings)
 		setGroup.PUT("/status", h.UpdateVisibleStatus)
@@ -74,7 +75,7 @@ func initSettingsRoutes(api *gin.RouterGroup, h *handler.SettingsHandler) {
 
 func initWebSocketRoutes(api *gin.RouterGroup) {
 	{
-		api.GET("/ws", middleware.AuthMiddleware(), func(c *gin.Context) {
+		api.GET("/ws", func(c *gin.Context) {
 			handler.Connect(c)
 		})
 	}

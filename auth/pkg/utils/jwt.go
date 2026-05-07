@@ -2,21 +2,11 @@ package utils
 
 import (
 	"auth/config"
-	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
-
-func ParseToken(tokenString string) (*jwt.Token, error) {
-	if tokenString == "" {
-		return nil, errors.New("token is empty")
-	}
-	return jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-		return config.Env.JWTSecret, nil
-	})
-}
 
 func GenerateRefreshTokenString() (string, time.Time) {
 	refreshToken := uuid.NewString()
