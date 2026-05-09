@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"context"
+	gwRedis "gateway/pkg/redis"
 	"gateway/pkg/utils"
 	"log"
 	"net/http"
@@ -38,13 +40,24 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
+		// Проверяем, не отозван ли access-токен (blacklist по jti)
+		if jti, exists := claims["jti"].(string); exists && jti != "" {
+			blacklistKey := "blacklist:jti:" + jti
+			val, err := gwRedis.GatewayRedis.Exists(context.Background(), blacklistKey).Result()
+			if err != nil {
+				log.Printf("[AuthMiddleware] Redis blacklist check error: %v", err)
+				// При ошибке Redis пропускаем — не блокируем пользователя из-за сбоя Redis
+			} else if val > 0 {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token has been revoked"})
+				return
+			}
+		}
+
 		refreshToken, err := c.Cookie("refresh_token")
 		if err != nil || refreshToken == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired session"})
 			return
 		}
-
-		// TODO: надо перейти на сессии в redis
 
 		c.Request.Header.Set("X-User-ID", claims["id"].(string))
 		c.Next()

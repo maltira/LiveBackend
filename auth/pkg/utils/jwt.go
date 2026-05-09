@@ -14,13 +14,16 @@ func GenerateRefreshTokenString() (string, time.Time) {
 	return refreshToken, expiresAt
 }
 
-func GenerateAccessToken(userID uuid.UUID) (string, error) {
+func GenerateAccessToken(userID uuid.UUID) (string, string, error) {
+	jti := uuid.NewString()
 	access := jwt.NewWithClaims(
 		jwt.SigningMethodHS256,
 		jwt.MapClaims{
 			"id":  userID,
+			"jti": jti,
 			"exp": time.Now().Add(config.Env.AccessTokenDuration).Unix(),
 		},
 	)
-	return access.SignedString(config.Env.JWTSecret)
+	token, err := access.SignedString(config.Env.JWTSecret)
+	return token, jti, err
 }

@@ -83,6 +83,7 @@ services:
       - rabbitmq
     env_file:
       - ./.env
+
 volumes:
   redis-data:
   postgres_data:

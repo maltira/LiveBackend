@@ -1,10 +1,14 @@
 package service
 
 import (
+	"auth/config"
 	"auth/internal/models"
 	"auth/internal/repository"
+	authRedis "auth/pkg/redis"
 	"auth/pkg/utils"
+	"context"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,6 +20,7 @@ type TokenService interface {
 	RevokeRefreshToken(refreshToken string) error
 	RevokeAllRefreshTokens(userID uuid.UUID, excludeToken *string) error
 	ListActiveSessions(userID uuid.UUID) ([]models.RefreshToken, error)
+	BlacklistJTI(jti string) error
 }
 type tokenService struct {
 	repo repository.TokenRepository
@@ -30,6 +35,12 @@ func (s *tokenService) Refresh(refreshToken string) (string, string, error) {
 	if err != nil || time.Now().After(rt.ExpiresAt) {
 		return "", "", errors.New("invalid refresh token")
 	}
+
+	// Blacklist старый access jti
+	if rt.AccessJTI != "" {
+		_ = s.BlacklistJTI(rt.AccessJTI)
+	}
+
 	// Отзываем старый токен
 	_ = s.repo.Revoke(refreshToken)
 
@@ -45,12 +56,12 @@ func (s *tokenService) Refresh(refreshToken string) (string, string, error) {
 func (s *tokenService) GenerateTokens(userID uuid.UUID, ip, userAgent, device string) (string, string, error) {
 	refreshToken, expiresAt := utils.GenerateRefreshTokenString()
 
-	accessToken, err := utils.GenerateAccessToken(userID)
+	accessToken, jti, err := utils.GenerateAccessToken(userID)
 	if err != nil {
 		return "", "", err
 	}
 
-	if err = s.repo.SaveRefreshToken(refreshToken, userID, expiresAt, ip, userAgent, device); err != nil {
+	if err = s.repo.SaveRefreshToken(refreshToken, userID, expiresAt, ip, userAgent, device, jti); err != nil {
 		return "", "", err
 	}
 
@@ -58,13 +69,34 @@ func (s *tokenService) GenerateTokens(userID uuid.UUID, ip, userAgent, device st
 }
 
 func (s *tokenService) RevokeRefreshToken(refreshToken string) error {
+	// Получаем запись, чтобы достать jti для blacklist
+	rt, err := s.repo.FindRefreshToken(refreshToken)
+	if err == nil && rt.AccessJTI != "" {
+		_ = s.BlacklistJTI(rt.AccessJTI)
+	}
 	return s.repo.Revoke(refreshToken)
 }
 
 func (s *tokenService) RevokeAllRefreshTokens(userID uuid.UUID, excludeToken *string) error {
+	// Собираем все jti перед удалением
+	jtis, err := s.repo.GetActiveJTIs(userID, excludeToken)
+	if err != nil {
+		log.Printf("Warning: failed to get JTIs for blacklist: %v", err)
+	}
+	for _, jti := range jtis {
+		_ = s.BlacklistJTI(jti)
+	}
 	return s.repo.RevokeAll(userID, excludeToken)
 }
 
 func (s *tokenService) ListActiveSessions(userID uuid.UUID) ([]models.RefreshToken, error) {
 	return s.repo.ListActiveSessions(userID)
+}
+
+// BlacklistJTI помещает jti access-токена в Redis blacklist с TTL = AccessTokenDuration
+func (s *tokenService) BlacklistJTI(jti string) error {
+	ctx := context.Background()
+	key := "blacklist:jti:" + jti
+	// TTL = AccessTokenDuration, после истечения access-токен и так станет невалидным
+	return authRedis.AuthRedis.Set(ctx, key, "1", config.Env.AccessTokenDuration).Err()
 }
