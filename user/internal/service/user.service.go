@@ -3,7 +3,6 @@ package service
 import (
 	"errors"
 	"user/internal/models"
-	"user/internal/models/dto"
 	"user/internal/repository"
 
 	"github.com/google/uuid"
@@ -12,7 +11,7 @@ import (
 
 type ProfileService interface {
 	Create(userID uuid.UUID) error
-	Update(userID uuid.UUID, profile *dto.UpdateProfileRequest) error
+	Update(userID uuid.UUID, data *map[string]interface{}) error
 
 	GetAll() ([]models.Profile, error)
 	GetAllBySearch(search string, limit int) ([]models.Profile, error)
@@ -42,31 +41,42 @@ func (sc *profileService) Create(userID uuid.UUID) error {
 	return sc.repo.Create(profile, settings)
 }
 
-func (sc *profileService) Update(userID uuid.UUID, profile *dto.UpdateProfileRequest) error {
+func (sc *profileService) Update(userID uuid.UUID, data *map[string]interface{}) error {
 	updates := make(map[string]interface{})
 
-	if profile.Username != nil {
-		err := sc.repo.UsernameExists(*profile.Username)
+	if v, ok := (*data)["username"]; ok {
+		if len(v.(string)) < 4 || len(v.(string)) > 16 {
+			return errors.New("username error")
+		}
+
+		err := sc.repo.UsernameExists(v.(string))
 		if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
-			updates["username"] = *profile.Username
+			updates["username"] = v
 		} else {
-			return errors.New("это имя пользователя занято")
+			return errors.New("username exists")
 		}
 	}
-	if profile.FullName != nil {
-		updates["full_name"] = *profile.FullName
-	}
-	if profile.Bio != nil {
-		updates["bio"] = *profile.Bio
-	}
-	if profile.AvatarURL != nil {
-		updates["avatar_url"] = *profile.AvatarURL
+
+	if v, ok := (*data)["full_name"]; ok {
+		if len(v.(string)) < 4 || len(v.(string)) > 100 {
+			return errors.New("full_name error")
+		}
+		updates["full_name"] = v
 	}
 
-	if profile.BirthDate != nil {
-		updates["birth_date"] = *profile.BirthDate
-	} else if profile.BirthDateIsSet == true {
-		updates["birth_date"] = nil
+	if v, ok := (*data)["bio"]; ok {
+		if len(v.(string)) > 500 {
+			return errors.New("bio error")
+		}
+		updates["bio"] = v
+	}
+
+	if v, ok := (*data)["avatar_url"]; ok {
+		updates["avatar_url"] = v
+	}
+
+	if v, ok := (*data)["birth_date"]; ok {
+		updates["birth_date"] = v
 	}
 
 	if len(updates) == 0 {
@@ -84,6 +94,7 @@ func (sc *profileService) GetAllBySearch(search string, limit int) ([]models.Pro
 func (sc *profileService) FindByID(userID uuid.UUID) (*models.Profile, error) {
 	return sc.repo.FindByID(userID)
 }
+
 func (sc *profileService) IsUsernameFree(username string) (bool, error) {
 	err := sc.repo.UsernameExists(username)
 	if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {

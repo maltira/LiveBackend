@@ -1,19 +1,20 @@
 package middleware
 
 import (
-	"auth/internal/repository"
-	"auth/pkg/utils"
+	"context"
+	gwRedis "gateway/pkg/redis"
+	"gateway/pkg/utils"
+	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
 )
 
-func AuthMiddleware(repo repository.TokenRepository) gin.HandlerFunc {
+func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
+
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -25,6 +26,7 @@ func AuthMiddleware(repo repository.TokenRepository) gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
+		log.Println("[AuthMiddleware] Token:", tokenString)
 
 		parsedToken, err := utils.ParseToken(tokenString)
 		if err != nil || !parsedToken.Valid {
@@ -38,18 +40,26 @@ func AuthMiddleware(repo repository.TokenRepository) gin.HandlerFunc {
 			return
 		}
 
+		// Проверяем, не отозван ли access-токен (blacklist по jti)
+		if jti, exists := claims["jti"].(string); exists && jti != "" {
+			blacklistKey := "blacklist:jti:" + jti
+			val, err := gwRedis.GatewayRedis.Exists(context.Background(), blacklistKey).Result()
+			if err != nil {
+				log.Printf("[AuthMiddleware] Redis blacklist check error: %v", err)
+				// При ошибке Redis пропускаем — не блокируем пользователя из-за сбоя Redis
+			} else if val > 0 {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "token has been revoked"})
+				return
+			}
+		}
+
 		refreshToken, err := c.Cookie("refresh_token")
 		if err != nil || refreshToken == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired session"})
 			return
 		}
-		rt, err := repo.FindRefreshToken(refreshToken)
-		if err != nil || time.Now().After(rt.ExpiresAt) {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired session"})
-			return
-		}
 
-		c.Set("userID", uuid.MustParse(claims["id"].(string)))
+		c.Request.Header.Set("X-User-ID", claims["id"].(string))
 		c.Next()
 	}
 }

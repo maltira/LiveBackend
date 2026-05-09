@@ -3,6 +3,7 @@ package handler
 import (
 	"chat/internal/models/dto"
 	"chat/internal/service"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -31,7 +32,11 @@ func (h *ChatHandler) IsChatExists(c *gin.Context) {
 }
 
 func (h *ChatHandler) GetAllChats(c *gin.Context) {
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 
 	chats, err := h.sc.GetAllChats(userID)
 	if err != nil {
@@ -45,7 +50,11 @@ func (h *ChatHandler) GetAllChats(c *gin.Context) {
 func (h *ChatHandler) CreatePrivateChat(c *gin.Context) {
 	uID := c.Query("uid")
 
-	user1ID := c.MustGet("userID").(uuid.UUID)
+	user1ID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 	user2ID, err := uuid.Parse(uID)
 	if err != nil {
 		c.JSON(500, dto.ErrorResponse{Code: 500, Error: "Неверный формат для sID (uuid)"})

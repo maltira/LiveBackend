@@ -15,7 +15,6 @@ import (
 func InitRouter() *gin.Engine {
 	r := gin.Default()
 	api := r.Group("/api/chat")
-	api.Use(middleware.AuthMiddleware())
 
 	var (
 		cRepo repository.ChatRepository        = repository.NewChatRepository(chatdb.GetDB())

@@ -3,6 +3,7 @@ package handler
 import (
 	"chat/internal/models/dto"
 	"chat/internal/service"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -39,7 +40,11 @@ func (h *ParticipantHandler) GetParticipant(c *gin.Context) {
 func (h *ParticipantHandler) GetAllParticipants(c *gin.Context) {
 	id := c.Param("id")
 	chatID := uuid.MustParse(id)
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 
 	isParticipant := h.sc.IsParticipant(chatID, userID)
 
@@ -72,9 +77,13 @@ func (h *ParticipantHandler) IsParticipant(c *gin.Context) {
 func (h *ParticipantHandler) JoinToChat(c *gin.Context) {
 	id := c.Param("id")
 	chatID := uuid.MustParse(id)
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 
-	err := h.sc.JoinToChat(chatID, userID)
+	err = h.sc.JoinToChat(chatID, userID)
 	if err != nil {
 		c.JSON(500, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
@@ -86,9 +95,13 @@ func (h *ParticipantHandler) JoinToChat(c *gin.Context) {
 func (h *ParticipantHandler) LeaveChat(c *gin.Context) {
 	id := c.Param("id")
 	chatID := uuid.MustParse(id)
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 
-	err := h.sc.LeaveChat(chatID, userID)
+	err = h.sc.LeaveChat(chatID, userID)
 	if err != nil {
 		c.JSON(500, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
@@ -99,7 +112,11 @@ func (h *ParticipantHandler) LeaveChat(c *gin.Context) {
 func (h *ParticipantHandler) Kick(c *gin.Context) {
 	id := c.Param("id")
 	chatID := uuid.MustParse(id)
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 	kID := c.Query("uid")
 	kickedID, err := uuid.Parse(kID)
 	if err != nil {
@@ -119,14 +136,18 @@ func (h *ParticipantHandler) Kick(c *gin.Context) {
 func (h *ParticipantHandler) Mute(c *gin.Context) {
 	id := c.Param("id")
 	chatID := uuid.MustParse(id)
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 	var req dto.MuteRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, dto.ErrorResponse{Code: 400, Error: "Некорректные данные в теле запроса"})
 		return
 	}
 
-	err := h.sc.MuteParticipant(userID, chatID, req.MutedID, req.UntilDate)
+	err = h.sc.MuteParticipant(userID, chatID, req.MutedID, req.UntilDate)
 	if err != nil {
 		c.JSON(500, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
@@ -138,7 +159,11 @@ func (h *ParticipantHandler) Mute(c *gin.Context) {
 func (h *ParticipantHandler) Unmute(c *gin.Context) {
 	id := c.Param("id")
 	chatID := uuid.MustParse(id)
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 	uID := c.Query("uid")
 	mutedID, err := uuid.Parse(uID)
 	if err != nil {

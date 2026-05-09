@@ -1,14 +1,17 @@
 package middleware
 
 import (
+	rds "gateway/pkg/redis"
+
 	"github.com/gin-gonic/gin"
-	"github.com/redis/go-redis/v9"
 	"github.com/ulule/limiter/v3"
 	mgin "github.com/ulule/limiter/v3/drivers/middleware/gin"
 	redisstore "github.com/ulule/limiter/v3/drivers/store/redis"
 )
 
-func RateLimiterMiddleware(redisClient *redis.Client, rateString string, prefix string) gin.HandlerFunc {
+func RateLimiterMiddleware(rateString string, prefix string) gin.HandlerFunc {
+	redisClient := rds.GatewayRedis
+
 	rate, err := limiter.NewRateFromFormatted(rateString)
 	if err != nil {
 		panic("Invalid rate format: " + rateString + " → " + err.Error())

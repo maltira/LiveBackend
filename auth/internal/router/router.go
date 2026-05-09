@@ -1,14 +1,11 @@
 package router
 
 import (
+	_ "auth/docs"
 	"auth/internal/handler"
-	"auth/internal/middleware"
 	"auth/internal/repository"
 	"auth/internal/service"
 	authdb "auth/pkg/database"
-	"auth/pkg/redis"
-
-	_ "auth/docs"
 
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -16,7 +13,6 @@ import (
 )
 
 func InitRouter() *gin.Engine {
-	rdb := redis.AuthRedis
 	aRepo := repository.NewAuthRepository(authdb.GetDB())
 	oRepo := repository.NewOtpRepository(authdb.GetDB())
 	tRepo := repository.NewTokenRepository(authdb.GetDB())
@@ -32,13 +28,10 @@ func InitRouter() *gin.Engine {
 	api := r.Group("/api/auth")
 
 	public := api.Group("")
-	public.Use(middleware.RateLimiterMiddleware(rdb, "30-M", "auth:limiter:auth:"))
 	login := public.Group("/login")
 	register := public.Group("/register")
 
 	otp := api.Group("/otp")
-	otp.Use(middleware.RateLimiterMiddleware(rdb, "5-M", "auth:limiter:otp:"))
-
 	{
 		{
 			register.POST("", aHandler.Register)
@@ -56,7 +49,6 @@ func InitRouter() *gin.Engine {
 	}
 
 	reset := api.Group("")
-	reset.Use(middleware.RateLimiterMiddleware(rdb, "5-H", "auth:limiter:reset:"))
 	{
 		// Восстановление пароля
 		reset.POST("/forgot-password", aHandler.ForgotPassword)
@@ -64,7 +56,6 @@ func InitRouter() *gin.Engine {
 	}
 
 	protected := api.Group("")
-	protected.Use(middleware.AuthMiddleware(tRepo))
 	{
 		protected.GET("/me", aHandler.Me)
 		protected.POST("/delete-account", oHandler.VerifyDeleteAccountOTP)

@@ -9,7 +9,8 @@ import (
 
 type SettingsRepository interface {
 	GetSettings(profileID uuid.UUID) (*models.Settings, error)
-	SaveSettings(userID uuid.UUID, updates map[string]interface{}) error
+	UpdateVisibleStatus(userID uuid.UUID, isVisible bool) error
+	UpdateVisibleBirthDate(userID uuid.UUID, visible string) error
 }
 
 type settingsRepository struct {
@@ -29,9 +30,16 @@ func (r *settingsRepository) GetSettings(profileID uuid.UUID) (*models.Settings,
 	return &settings, nil
 }
 
-func (r *settingsRepository) SaveSettings(userID uuid.UUID, updates map[string]interface{}) error {
+func (r *settingsRepository) UpdateVisibleStatus(userID uuid.UUID, isVisible bool) error {
 	return r.db.
 		Model(&models.Settings{}).
 		Where("profile_id = ?", userID).
-		Updates(updates).Error
+		Update("show_online_status = ?", isVisible).Error
+}
+
+func (r *settingsRepository) UpdateVisibleBirthDate(userID uuid.UUID, visible string) error {
+	return r.db.
+		Model(&models.Settings{}).
+		Where("profile_id = ?", userID).
+		Update("show_birth_date = ?", visible).Error
 }

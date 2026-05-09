@@ -4,6 +4,7 @@ import (
 	"chat/internal/models/dto"
 	"chat/internal/service"
 	"errors"
+	"net/http"
 	"strconv"
 
 	"github.com/gin-gonic/gin"
@@ -20,7 +21,11 @@ func NewMsgHandler(sc service.MsgService) *MsgHandler {
 }
 
 func (h *MsgHandler) GetMessages(c *gin.Context) {
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 	id := c.Param("id")
 	chatID := uuid.MustParse(id)
 
@@ -47,7 +52,11 @@ func (h *MsgHandler) GetMessages(c *gin.Context) {
 }
 
 func (h *MsgHandler) GetLastMessage(c *gin.Context) {
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 	id := c.Param("id")
 	chatID := uuid.MustParse(id)
 
@@ -65,12 +74,16 @@ func (h *MsgHandler) GetLastMessage(c *gin.Context) {
 }
 
 func (h *MsgHandler) SendMessage(c *gin.Context) {
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 	id := c.Param("id")
 	chatID := uuid.MustParse(id)
 
 	var req *dto.MsgCreateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err = c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, dto.ErrorResponse{Code: 400, Error: "Некорректные данные в теле запроса"})
 		return
 	}
@@ -87,15 +100,19 @@ func (h *MsgHandler) SendMessage(c *gin.Context) {
 func (h *MsgHandler) UpdateMessage(c *gin.Context) {
 	id := c.Param("id")
 	msgID := uuid.MustParse(id)
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 
 	var req *dto.MsgUpdateRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err = c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, dto.ErrorResponse{Code: 400, Error: "Некорректные данные в теле запроса"})
 		return
 	}
 
-	err := h.sc.UpdateMessage(msgID, userID, req)
+	err = h.sc.UpdateMessage(msgID, userID, req)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(403, dto.ErrorResponse{Code: 403, Error: "Сообщение не найдено или вы не являетесь автором"})
@@ -110,9 +127,13 @@ func (h *MsgHandler) UpdateMessage(c *gin.Context) {
 func (h *MsgHandler) DeleteMessage(c *gin.Context) {
 	id := c.Param("id")
 	msgID := uuid.MustParse(id)
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 
-	err := h.sc.DeleteMessage(msgID, userID)
+	err = h.sc.DeleteMessage(msgID, userID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(403, dto.ErrorResponse{Code: 403, Error: "Сообщение не найдено или вы не являетесь автором"})

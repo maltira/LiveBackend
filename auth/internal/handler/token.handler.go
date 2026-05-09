@@ -32,7 +32,7 @@ func NewRefreshHandler(tsc service.TokenService) *RefreshHandler {
 // @Router       /auth/refresh [post]
 func (h *RefreshHandler) Refresh(c *gin.Context) {
 	refreshToken, err := c.Cookie("refresh_token")
-	if err != nil || refreshToken == "" {
+	if err != nil {
 		c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: config.UnauthorizedError})
 		return
 	}
@@ -93,7 +93,11 @@ func (h *RefreshHandler) TerminateSession(c *gin.Context) {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/sessions [get]
 func (h *RefreshHandler) ListSessions(c *gin.Context) {
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
 
 	sessions, err := h.tsc.ListActiveSessions(userID)
 	if err != nil {

@@ -169,7 +169,11 @@ func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/logout/all [post]
 func (h *AuthHandler) LogoutAll(c *gin.Context) {
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
 	refreshToken, _ := c.Cookie("refresh_token")
 
 	if err := h.tsc.RevokeAllRefreshTokens(userID, &refreshToken); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -306,7 +310,11 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/me [get]
 func (h *AuthHandler) Me(c *gin.Context) {
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
 
 	user, err := h.asc.FindByID(userID)
 	if err != nil {
@@ -337,7 +345,11 @@ func (h *AuthHandler) Me(c *gin.Context) {
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router      /auth/change/pass [post]
 func (h *AuthHandler) ChangePass(c *gin.Context) {
-	userID, _ := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
 
 	var req dto.ChangePasswordRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -387,7 +399,11 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 // @Failure     500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router      /auth/change/email [post]
 func (h *AuthHandler) ChangeEmail(c *gin.Context) {
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
 
 	var req dto.ChangeEmailRequest
 	if err := c.ShouldBindJSON(&req); err != nil {

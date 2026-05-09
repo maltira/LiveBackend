@@ -2,21 +2,11 @@ package utils
 
 import (
 	"auth/config"
-	"errors"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )
-
-func ParseToken(tokenString string) (*jwt.Token, error) {
-	if tokenString == "" {
-		return nil, errors.New("token is empty")
-	}
-	return jwt.Parse(tokenString, func(t *jwt.Token) (interface{}, error) {
-		return config.Env.JWTSecret, nil
-	})
-}
 
 func GenerateRefreshTokenString() (string, time.Time) {
 	refreshToken := uuid.NewString()
@@ -24,13 +14,16 @@ func GenerateRefreshTokenString() (string, time.Time) {
 	return refreshToken, expiresAt
 }
 
-func GenerateAccessToken(userID uuid.UUID) (string, error) {
+func GenerateAccessToken(userID uuid.UUID) (string, string, error) {
+	jti := uuid.NewString()
 	access := jwt.NewWithClaims(
 		jwt.SigningMethodHS256,
 		jwt.MapClaims{
 			"id":  userID,
+			"jti": jti,
 			"exp": time.Now().Add(config.Env.AccessTokenDuration).Unix(),
 		},
 	)
-	return access.SignedString(config.Env.JWTSecret)
+	token, err := access.SignedString(config.Env.JWTSecret)
+	return token, jti, err
 }

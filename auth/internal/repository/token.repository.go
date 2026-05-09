@@ -9,11 +9,12 @@ import (
 )
 
 type TokenRepository interface {
-	SaveRefreshToken(token string, userID uuid.UUID, expiresAt time.Time, ip, userAgent, device string) error
+	SaveRefreshToken(token string, userID uuid.UUID, expiresAt time.Time, ip, userAgent, device, accessJTI string) error
 	FindRefreshToken(token string) (*models.RefreshToken, error)
 	Revoke(token string) error
 	RevokeAll(userID uuid.UUID, excludeToken *string) error
 	ListActiveSessions(userID uuid.UUID) ([]models.RefreshToken, error)
+	GetActiveJTIs(userID uuid.UUID, excludeToken *string) ([]string, error)
 }
 type tokenRepository struct {
 	db *gorm.DB
@@ -23,7 +24,7 @@ func NewTokenRepository(db *gorm.DB) TokenRepository {
 	return &tokenRepository{db: db}
 }
 
-func (r *tokenRepository) SaveRefreshToken(token string, userID uuid.UUID, expiresAt time.Time, ip, userAgent, device string) error {
+func (r *tokenRepository) SaveRefreshToken(token string, userID uuid.UUID, expiresAt time.Time, ip, userAgent, device, accessJTI string) error {
 	rt := models.RefreshToken{
 		Token:     token,
 		UserID:    userID,
@@ -31,6 +32,7 @@ func (r *tokenRepository) SaveRefreshToken(token string, userID uuid.UUID, expir
 		IP:        ip,
 		UserAgent: userAgent,
 		Device:    device,
+		AccessJTI: accessJTI,
 	}
 	return r.db.Create(&rt).Error
 }
@@ -66,4 +68,16 @@ func (r *tokenRepository) ListActiveSessions(userID uuid.UUID) ([]models.Refresh
 		return nil, err
 	}
 	return sessions, nil
+}
+
+// GetActiveJTIs возвращает список access_jti всех активных сессий пользователя (для blacklist при revoke all)
+func (r *tokenRepository) GetActiveJTIs(userID uuid.UUID, excludeToken *string) ([]string, error) {
+	var jtis []string
+	query := r.db.Model(&models.RefreshToken{}).
+		Where("user_id = ? AND access_jti != ''", userID)
+	if excludeToken != nil {
+		query = query.Where("token != ?", *excludeToken)
+	}
+	err := query.Pluck("access_jti", &jtis).Error
+	return jtis, err
 }

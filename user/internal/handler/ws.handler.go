@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"time"
+	"user/config"
+	"user/internal/models/dto"
 	"user/pkg/rabbitmq"
 	"user/pkg/redis"
 	"user/pkg/utils"
@@ -48,7 +50,11 @@ type Participant struct {
 }
 
 func Connect(c *gin.Context) {
-	userID := c.MustGet("userID").(uuid.UUID)
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		return
+	}
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {

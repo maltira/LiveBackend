@@ -75,13 +75,14 @@ func (r *profileRepository) GetAllBySearch(query string, limit int) ([]models.Pr
 	return users, nil
 }
 func (r *profileRepository) FindByID(userID uuid.UUID) (*models.Profile, error) {
-	var user models.Profile
+	var user *models.Profile
 	err := r.db.Preload("Settings").First(&user, "id = ?", userID).Error
 	if err != nil {
 		return nil, err
 	}
-	return &user, nil
+	return user, nil
 }
+
 func (r *profileRepository) UsernameExists(username string) error {
 	return r.db.First(&models.Profile{}, "username = ?", username).Error
 }
