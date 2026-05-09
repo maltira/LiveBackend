@@ -27,7 +27,7 @@ func NewChatRepository(db *gorm.DB) ChatRepository {
 
 func (r *chatRepository) IsChatExists(chatID uuid.UUID) (*models.Chat, error) {
 	var chat *models.Chat
-	err := r.db.Where("chat_id = ?", chatID).First(&chat).Error
+	err := r.db.Where("id = ?", chatID).First(&chat).Error
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func (r *chatRepository) GetAllChats(userID uuid.UUID) ([]models.Chat, error) {
 
 func (r *chatRepository) GetByID(chatID uuid.UUID) (*models.Chat, error) {
 	var chat *models.Chat
-	err := r.db.Where("chat_id = ?", chatID).First(&chat).Error
+	err := r.db.Where("id = ?", chatID).First(&chat).Error
 	if err != nil {
 		return nil, err
 	}

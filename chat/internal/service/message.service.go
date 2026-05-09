@@ -44,7 +44,7 @@ func (s *msgService) GetMessages(userID, chatID uuid.UUID, limit, offset int) ([
 }
 
 func (s *msgService) GetLastMessage(userID, chatID uuid.UUID) (*models.Message, error) {
-	isMember := s.pRepo.IsParticipant(userID, chatID)
+	isMember := s.pRepo.IsParticipant(chatID, userID)
 	if !isMember {
 		return nil, errors.New("вы не являетесь участником чата")
 	}
@@ -57,6 +57,11 @@ func (s *msgService) CreateMessage(chatID uuid.UUID, userID *uuid.UUID, req *dto
 		return nil, errors.New("invalid parameter in body of request")
 	} else if len(req.Content) > 4096 {
 		return nil, errors.New("content too long")
+	}
+
+	// Проверяем участие в чате (кроме системных сообщений)
+	if userID != nil && !s.pRepo.IsParticipant(chatID, *userID) {
+		return nil, errors.New("вы не являетесь участником чата")
 	}
 
 	msg := &models.Message{

@@ -15,7 +15,7 @@ type ChatService interface {
 	GetAllChats(userID uuid.UUID) ([]models.Chat, error)
 
 	CreatePrivateChat(user1ID, user2ID uuid.UUID) (*models.Chat, error)
-	CreateGroupChat(req *dto.ChatCreateRequest) (*models.Chat, error)
+	CreateGroupChat(ownerID uuid.UUID, req *dto.ChatCreateRequest) (*models.Chat, error)
 }
 
 type chatService struct {
@@ -42,12 +42,15 @@ func (sc *chatService) GetAllChats(userID uuid.UUID) ([]models.Chat, error) {
 }
 
 func (sc *chatService) CreatePrivateChat(user1ID, user2ID uuid.UUID) (*models.Chat, error) {
+	if user1ID == user2ID {
+		return nil, errors.New("нельзя создать чат с самим собой")
+	}
 	return sc.repo.CreatePrivateChat(user1ID, user2ID)
 }
 
-func (sc *chatService) CreateGroupChat(req *dto.ChatCreateRequest) (*models.Chat, error) {
+func (sc *chatService) CreateGroupChat(ownerID uuid.UUID, req *dto.ChatCreateRequest) (*models.Chat, error) {
 	if req.AvatarURL != nil && len(*req.AvatarURL) == 0 {
 		return nil, errors.New("incorrect avatarURL")
 	}
-	return sc.repo.CreateGroupChat(req.Name, req.AvatarURL, req.CanJoin, req.CreatedBy, req.Members)
+	return sc.repo.CreateGroupChat(req.Name, req.AvatarURL, req.CanJoin, ownerID, req.Members)
 }

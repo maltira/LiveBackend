@@ -76,12 +76,26 @@ func (r *msgRepository) EditMessage(msg *models.Message) error {
 		updates["reply_to_message"] = nil
 	}
 
-	return r.db.
+	result := r.db.
 		Model(&models.Message{}).
 		Where("id = ? AND user_id = ?", msg.ID, *msg.UserID).
-		Updates(&updates).Error
+		Updates(&updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
 
 func (r *msgRepository) DeleteMessage(msgID, userID uuid.UUID) error {
-	return r.db.Where("id = ? AND user_id = ?", msgID, userID).Delete(&models.Message{}).Error
+	result := r.db.Where("id = ? AND user_id = ?", msgID, userID).Delete(&models.Message{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
 }
