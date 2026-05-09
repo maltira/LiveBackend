@@ -66,15 +66,17 @@ func (h *RefreshHandler) Refresh(c *gin.Context) {
 // @Success      200  {object} dto.MessageResponse "Сессия завершена"
 // @Failure      400  {object} dto.ErrorResponse "Переданы некорректные данные"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /auth/logout/{token} [post]
+// @Router       /auth/logout/{token_id} [post]
 func (h *RefreshHandler) TerminateSession(c *gin.Context) {
-	token := c.Param("token")
-	if token == "" {
+	id := c.Param("token_id")
+	if id == "" {
 		c.JSON(400, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError + ": token"})
 		return
 	}
 
-	err := h.tsc.RevokeRefreshToken(token)
+	tokenID := uuid.MustParse(id)
+
+	err := h.tsc.RevokeRefreshTokenById(tokenID)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		c.JSON(500, dto.ErrorResponse{Code: 500, Error: "Ошибка удаления токена: " + err.Error()})
 		return

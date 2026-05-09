@@ -8,9 +8,9 @@ import (
 	"github.com/google/uuid"
 )
 
-func ValidateUUID() gin.HandlerFunc {
+func ValidateUUID(field string) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		id := c.Param("id")
+		id := c.Param(field)
 
 		if _, err := uuid.Parse(id); err != nil {
 			c.AbortWithStatusJSON(http.StatusNotFound, dto.ErrorResponse{Code: 400, Error: "invalid UUID"})

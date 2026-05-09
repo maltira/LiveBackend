@@ -30,8 +30,8 @@ func InitRouter() *gin.Engine {
 	public := api.Group("")
 	login := public.Group("/login")
 	register := public.Group("/register")
-
 	otp := api.Group("/otp")
+
 	{
 		{
 			register.POST("", aHandler.Register)
