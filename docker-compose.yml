@@ -45,8 +45,6 @@ services:
       dockerfile: Dockerfile
     image: chat-platform/auth
     restart: unless-stopped
-    ports:
-      - "8001:8001"
     depends_on:
       - redis
       - postgres
@@ -60,8 +58,6 @@ services:
       dockerfile: Dockerfile
     image: chat-platform/user
     restart: unless-stopped
-    ports:
-      - "8002:8002"
     depends_on:
       - redis
       - postgres
@@ -75,8 +71,6 @@ services:
       dockerfile: Dockerfile
     image: chat-platform/chat
     restart: unless-stopped
-    ports:
-      - "8003:8003"
     depends_on:
       - redis
       - postgres

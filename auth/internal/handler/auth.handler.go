@@ -215,8 +215,14 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 
 	// ? Генерируем и отправляем пользователю ссылку для сброса пароля
 
+	ctx := context.Background()
+
 	// Инвалидируем предыдущие токены сброса пароля этого пользователя
-	_ = redis.AuthRedis.Del(context.Background(), "reset:password:"+user.ID.String())
+	refKey := "reset:password:ref:" + user.ID.String()
+	if oldHash, err := redis.AuthRedis.Get(ctx, refKey).Result(); err == nil {
+		redis.AuthRedis.Del(ctx, "reset:password:"+oldHash)
+	}
+	redis.AuthRedis.Del(ctx, refKey)
 
 	plainToken, err := utils.GenerateSecureToken(32)
 	if err != nil {
@@ -227,27 +233,22 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		return
 	}
 
-	hashedToken, err := utils.HashToken(plainToken)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
-			Code:  500,
-			Error: "Ошибка хеширования временного токена: " + err.Error(),
-		})
-		return
-	}
+	tokenHash := utils.HashTokenSHA256(plainToken)
 
-	// токен сохраняем в редис
-	ctx := context.Background()
-	resetKey := "reset:password:" + user.ID.String()
-	err = redis.AuthRedis.Set(ctx, resetKey, hashedToken, config.Env.PassTokenDuration).Err()
+	// Ключ = SHA256(token) → значение = user_id (O(1) lookup при reset)
+	resetKey := "reset:password:" + tokenHash
+	err = redis.AuthRedis.Set(ctx, resetKey, user.ID.String(), config.Env.PassTokenDuration).Err()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Не удалось сохранить токен: " + err.Error()})
 		return
 	}
 
+	// Обратная ссылка: user_id → hash (для инвалидации предыдущих токенов)
+	_ = redis.AuthRedis.Set(ctx, refKey, tokenHash, config.Env.PassTokenDuration).Err()
+
 	// ссылку с токеном отправляем по email
 	go func() {
-		resetURL := fmt.Sprintf("%s/reset-password?token=%s", config.Env.FrontendURL, plainToken)
+		resetURL := fmt.Sprintf("%s/reset-password?token=%s", config.Env.FrontendURL, tokenHash)
 
 		err = smtp.SendPasswordReset(req.Email, resetURL, config.Env.PassTokenDuration)
 		if err != nil {

@@ -14,7 +14,6 @@ import (
 
 func AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
@@ -26,7 +25,6 @@ func AuthMiddleware() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
-		log.Println("[AuthMiddleware] Token:", tokenString)
 
 		parsedToken, err := utils.ParseToken(tokenString)
 		if err != nil || !parsedToken.Valid {

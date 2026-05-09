@@ -11,6 +11,7 @@ import (
 type TokenRepository interface {
 	SaveRefreshToken(token string, userID uuid.UUID, expiresAt time.Time, ip, userAgent, device, accessJTI string) error
 	FindRefreshToken(token string) (*models.RefreshToken, error)
+	FindRefreshTokenById(tokenID uuid.UUID) (*models.RefreshToken, error)
 	Revoke(token string) error
 	RevokeAll(userID uuid.UUID, excludeToken *string) error
 	ListActiveSessions(userID uuid.UUID) ([]models.RefreshToken, error)
@@ -40,6 +41,14 @@ func (r *tokenRepository) SaveRefreshToken(token string, userID uuid.UUID, expir
 func (r *tokenRepository) FindRefreshToken(token string) (*models.RefreshToken, error) {
 	var rt *models.RefreshToken
 	if err := r.db.Where("token = ?", token).First(&rt).Error; err != nil {
+		return nil, err
+	}
+
+	return rt, nil
+}
+func (r *tokenRepository) FindRefreshTokenById(tokenID uuid.UUID) (*models.RefreshToken, error) {
+	var rt *models.RefreshToken
+	if err := r.db.Where("id = ?", tokenID).First(&rt).Error; err != nil {
 		return nil, err
 	}
 

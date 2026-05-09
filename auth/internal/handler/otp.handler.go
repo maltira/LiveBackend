@@ -36,11 +36,12 @@ func NewOtpHandler(osc service.OtpService, asc service.AuthService, tsc service.
 // @Accept       json
 // @Produce      json
 // @Param 		 body body dto.SendOTPRequest true "UserID и Email"
-// @Success      200  {boolean} true
+// @Success      200  {boolean} dto.OTPSentResponse
 // @Failure      400  {object} dto.ErrorResponse "Переданы некорректные параметры"
 // @Router       /auth/otp/send [post]
 func (h *OtpHandler) SendOTP(c *gin.Context) {
 	var req dto.SendOTPRequest
+
 	if err := c.ShouldBindJSON(&req); err != nil {
 		validationError, isValidationError := custom.IsValidationError(err)
 		if isValidationError {
@@ -60,7 +61,7 @@ func (h *OtpHandler) SendOTP(c *gin.Context) {
 	// отправляем на верификацию кода
 	c.JSON(http.StatusOK, dto.OTPSentResponse{
 		UserID:  req.UserID,
-		Message: "OTP-код отправляен на указанную почту",
+		Message: "OTP-код отправлен на указанную почту",
 	})
 }
 

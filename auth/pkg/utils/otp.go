@@ -1,7 +1,11 @@
 package utils
 
 import (
+	"auth/config"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"math/big"
 )
 
@@ -14,3 +18,13 @@ func GenerateOTP() string {
 	}
 	return string(b)
 }
+
+// HashOTP хеширует OTP-код через HMAC-SHA256 с серверным секретом.
+// Детерминистичный хеш позволяет искать по нему в SQL, а HMAC с секретом
+// предотвращает brute-force 6-значного кода при утечке БД.
+func HashOTP(code string) string {
+	mac := hmac.New(sha256.New, config.Env.JWTSecret)
+	mac.Write([]byte(code))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+

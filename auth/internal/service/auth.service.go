@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -112,6 +111,8 @@ func (s *authService) VerifyNewAccount(token string) error {
 		return lastErr
 	}
 
+	redis.AuthRedis.Del(context.Background(), "verify:"+token)
+
 	tx.Commit()
 	return nil
 }
@@ -156,23 +157,13 @@ func (s *authService) ResetPassword(token, newPassword string) error {
 	ctx := context.Background()
 
 	// Получаем все ключи reset:password:*
-	keys, err := redis.AuthRedis.Keys(ctx, "reset:password:*").Result()
+	userIDStr, err := redis.AuthRedis.Get(ctx, "reset:password:"+token).Result()
+	if err != nil {
+		return errors.New("invalid or expired token")
+	}
+	userID, err := uuid.Parse(userIDStr)
 	if err != nil {
 		return err
-	}
-
-	var userID uuid.UUID
-	for _, key := range keys {
-		hashedToken, _ := redis.AuthRedis.Get(ctx, key).Result()
-		if utils.CompareToken(token, hashedToken) {
-			userIDStr := strings.TrimPrefix(key, "reset:password:")
-			userID = uuid.MustParse(userIDStr)
-			break
-		}
-	}
-
-	if userID == uuid.Nil {
-		return errors.New("invalid or expired token")
 	}
 
 	// ищем пользователя и меняем пароль
@@ -192,9 +183,17 @@ func (s *authService) ResetPassword(token, newPassword string) error {
 	}
 
 	// Удаляем использованный токен
-	redis.AuthRedis.Del(ctx, "reset:password:"+userID.String())
+	redis.AuthRedis.Del(ctx, "reset:password:ref:"+userID.String())
+	redis.AuthRedis.Del(ctx, "reset:password:"+token)
 
 	// Отзываем все refresh-токены пользователя
+	jtis, err := s.tRepo.GetActiveJTIs(userID, nil)
+	if err != nil {
+		log.Printf("Warning: failed to get JTIs for blacklist: %v", err)
+	}
+	for _, jti := range jtis {
+		_ = BlacklistJTI(jti)
+	}
 	_ = s.tRepo.RevokeAll(user.ID, nil)
 
 	return nil

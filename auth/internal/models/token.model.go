@@ -7,7 +7,7 @@ import (
 )
 
 type RefreshToken struct {
-	ID     uuid.UUID `json:"-" gorm:"type:uuid;default:gen_random_uuid();primaryKey; not null"`
+	ID     uuid.UUID `json:"id" gorm:"type:uuid;default:gen_random_uuid();primaryKey; not null"`
 	UserID uuid.UUID `json:"-" gorm:"type:uuid;not null;index;"`
 	Token  string    `json:"-" gorm:"not null;index;"`
 

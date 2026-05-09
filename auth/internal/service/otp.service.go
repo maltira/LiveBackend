@@ -28,11 +28,12 @@ func NewOtpService(repo repository.OtpRepository) OtpService {
 
 func (s *otpService) SendOTP(userID uuid.UUID, email string) error {
 	code := utils.GenerateOTP()
+	hashedCode := utils.HashOTP(code)
 	expires := time.Now().Add(10 * time.Minute)
 
 	otp := models.OTPCode{
 		UserID:    userID,
-		Code:      code,
+		Code:      hashedCode,
 		ExpiresAt: expires,
 	}
 
@@ -58,7 +59,8 @@ func (s *otpService) SendOTP(userID uuid.UUID, email string) error {
 }
 
 func (s *otpService) FindValidOTP(userID uuid.UUID, code string) (*models.OTPCode, error) {
-	return s.repo.FindValidOTP(userID, code)
+	hashedCode := utils.HashOTP(code)
+	return s.repo.FindValidOTP(userID, hashedCode)
 }
 
 func (s *otpService) MarkOTPAsUsed(id uuid.UUID) error {

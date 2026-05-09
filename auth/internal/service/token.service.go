@@ -18,9 +18,9 @@ type TokenService interface {
 	GenerateTokens(userID uuid.UUID, ip, userAgent, device string) (string, string, error)
 	Refresh(refreshToken string) (string, string, error)
 	RevokeRefreshToken(refreshToken string) error
+	RevokeRefreshTokenById(userID, tokenID uuid.UUID) error
 	RevokeAllRefreshTokens(userID uuid.UUID, excludeToken *string) error
 	ListActiveSessions(userID uuid.UUID) ([]models.RefreshToken, error)
-	BlacklistJTI(jti string) error
 }
 type tokenService struct {
 	repo repository.TokenRepository
@@ -38,7 +38,7 @@ func (s *tokenService) Refresh(refreshToken string) (string, string, error) {
 
 	// Blacklist старый access jti
 	if rt.AccessJTI != "" {
-		_ = s.BlacklistJTI(rt.AccessJTI)
+		_ = BlacklistJTI(rt.AccessJTI)
 	}
 
 	// Отзываем старый токен
@@ -72,9 +72,20 @@ func (s *tokenService) RevokeRefreshToken(refreshToken string) error {
 	// Получаем запись, чтобы достать jti для blacklist
 	rt, err := s.repo.FindRefreshToken(refreshToken)
 	if err == nil && rt.AccessJTI != "" {
-		_ = s.BlacklistJTI(rt.AccessJTI)
+		_ = BlacklistJTI(rt.AccessJTI)
 	}
 	return s.repo.Revoke(refreshToken)
+}
+func (s *tokenService) RevokeRefreshTokenById(userID, tokenID uuid.UUID) error {
+	// Получаем запись, чтобы достать jti для blacklist
+	rt, err := s.repo.FindRefreshTokenById(tokenID)
+	if rt.UserID != userID {
+		return errors.New("invalid action")
+	}
+	if err == nil && rt.AccessJTI != "" {
+		_ = BlacklistJTI(rt.AccessJTI)
+	}
+	return s.repo.Revoke(rt.Token)
 }
 
 func (s *tokenService) RevokeAllRefreshTokens(userID uuid.UUID, excludeToken *string) error {
@@ -84,7 +95,7 @@ func (s *tokenService) RevokeAllRefreshTokens(userID uuid.UUID, excludeToken *st
 		log.Printf("Warning: failed to get JTIs for blacklist: %v", err)
 	}
 	for _, jti := range jtis {
-		_ = s.BlacklistJTI(jti)
+		_ = BlacklistJTI(jti)
 	}
 	return s.repo.RevokeAll(userID, excludeToken)
 }
@@ -94,7 +105,7 @@ func (s *tokenService) ListActiveSessions(userID uuid.UUID) ([]models.RefreshTok
 }
 
 // BlacklistJTI помещает jti access-токена в Redis blacklist с TTL = AccessTokenDuration
-func (s *tokenService) BlacklistJTI(jti string) error {
+func BlacklistJTI(jti string) error {
 	ctx := context.Background()
 	key := "blacklist:jti:" + jti
 	// TTL = AccessTokenDuration, после истечения access-токен и так станет невалидным

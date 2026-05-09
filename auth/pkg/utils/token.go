@@ -2,6 +2,7 @@ package utils
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 
 	"golang.org/x/crypto/bcrypt"
@@ -26,4 +27,12 @@ func HashToken(token string) (string, error) {
 func CompareToken(token, hashed string) bool {
 	err := bcrypt.CompareHashAndPassword([]byte(hashed), []byte(token))
 	return err == nil
+}
+
+// HashTokenSHA256 возвращает детерминированный SHA256-хеш токена.
+// Используется как ключ в Redis для O(1) lookup вместо KEYS + цикл.
+// Безопасно, тк исходный токен — 32 случайных байта (256 бит энтропии).
+func HashTokenSHA256(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:])
 }
