@@ -98,7 +98,11 @@ func (h *OtpHandler) VerifyLoginOTP(c *gin.Context) {
 	ip := c.ClientIP()
 	userAgent := c.Request.UserAgent()
 	device := utils.ParseDeviceInfo(userAgent)
-	access, refresh, _ := h.tsc.GenerateTokens(user.ID, ip, userAgent, device)
+	access, refresh, err := h.tsc.GenerateTokens(user.ID, ip, userAgent, device)
+	if err != nil {
+		c.JSON(500, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации токенов: " + err.Error()})
+		return
+	}
 
 	utils.SetAuthCookies(c, refresh)
 

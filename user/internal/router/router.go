@@ -19,7 +19,7 @@ func InitRouter() *gin.Engine {
 	bRepo := repository.NewBlockRepository(userdb.GetDB())
 	sRepo := repository.NewSettingsRepository(userdb.GetDB())
 	psc := service.NewProfileService(pRepo)
-	bsc := service.NewBlockService(bRepo)
+	bsc := service.NewBlockService(bRepo, pRepo)
 	ssc := service.NewSettingsService(sRepo)
 	pHandler := handler.NewProfileHandler(psc)
 	bHandler := handler.NewBlockHandler(bsc)
@@ -42,11 +42,10 @@ func initProfileRoutes(api *gin.RouterGroup, h *handler.ProfileHandler) {
 
 	userGroup := api.Group("/profile")
 	{
-		userGroup.GET("/all", h.FindAll)
 		userGroup.GET("search", h.GetProfilesByQuery)
 		userGroup.GET("", h.GetCurrentProfile)
 		userGroup.PUT("", h.UpdateProfile)
-		userGroup.POST("", h.CreateProfile)
+		userGroup.POST("", middleware.InternalOnly(), h.CreateProfile)
 		userGroup.GET("/:id", middleware.ValidateUUID(), h.GetProfileByID)
 
 		userGroup.GET("/check-username", h.IsUsernameFree)

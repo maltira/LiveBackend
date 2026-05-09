@@ -3,11 +3,16 @@ package utils
 import (
 	"log"
 	"time"
-	"user/internal/models"
-	"user/pkg/database"
 
 	"github.com/google/uuid"
 )
+
+// UpdateLastSeenFunc задаётся при старте приложения через InitStatusUtils
+var UpdateLastSeenFunc func(userID uuid.UUID, lastSeen time.Time) error
+
+func InitStatusUtils(fn func(userID uuid.UUID, lastSeen time.Time) error) {
+	UpdateLastSeenFunc = fn
+}
 
 func SetOnline(userID uuid.UUID) {
 	err := PublishStatusEvent(userID, true, time.Now())
@@ -22,8 +27,9 @@ func SetOffline(userID uuid.UUID) {
 	if err != nil {
 		log.Printf("[SetOffline] Failed to publish event for %s: %v", userID, err)
 	}
-	err = database.GetDB().Model(&models.Profile{}).Where("id = ?", userID).Update("last_seen", t).Error
-	if err != nil {
-		log.Printf("[SetOffline] Failed to change last_seen for %s: %v", userID, err)
+	if UpdateLastSeenFunc != nil {
+		if err = UpdateLastSeenFunc(userID, t); err != nil {
+			log.Printf("[SetOffline] Failed to change last_seen for %s: %v", userID, err)
+		}
 	}
 }

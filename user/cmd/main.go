@@ -24,10 +24,12 @@ import (
 	"time"
 	"user/config"
 	"user/internal/handler"
+	"user/internal/repository"
 	"user/internal/router"
 	userdb "user/pkg/database"
 	"user/pkg/rabbitmq"
 	"user/pkg/redis"
+	"user/pkg/utils"
 
 	_ "user/docs"
 )
@@ -37,6 +39,10 @@ func main() {
 	redis.InitUserRedis()
 	userdb.InitDB()
 	rabbitmq.InitRabbitMQ()
+
+	// Инициализируем UpdateLastSeen через repository (без прямого DB-доступа из utils)
+	pRepo := repository.NewProfileRepository(userdb.GetDB())
+	utils.InitStatusUtils(pRepo.UpdateLastSeen)
 
 	r := router.InitRouter()
 

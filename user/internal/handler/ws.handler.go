@@ -65,7 +65,7 @@ func Connect(c *gin.Context) {
 	client := &websocket.Client{
 		UserID: userID,
 		Conn:   conn,
-		Send:   make(chan []byte, 256), // буфер на 256 сообщений
+		Done:   make(chan struct{}),
 	}
 
 	websocket.ClientsMu.Lock()
@@ -74,8 +74,8 @@ func Connect(c *gin.Context) {
 
 	utils.SetOnline(userID)
 
-	go readPump(client)
 	go writePump(client)
+	go readPump(client)
 	log.Printf("User %s connected via WebSocket", userID)
 }
 
@@ -94,9 +94,15 @@ func PubSubBlock() {
 			continue
 		}
 
+		blockeUserID, err := uuid.Parse(event.BlockedID)
+		if err != nil {
+			log.Printf("Invalid uuid transfered by event Block")
+			continue
+		}
+
 		// Рассылаем только заблокированному пользователю
 		websocket.ClientsMu.RLock()
-		blockedClient, exists := websocket.Clients[uuid.MustParse(event.BlockedID)]
+		blockedClient, exists := websocket.Clients[blockeUserID]
 		if exists && blockedClient.Conn != nil {
 			blockedClient.Mu.Lock()
 			err := blockedClient.Conn.WriteMessage(ws.TextMessage, []byte(msg.Payload))
@@ -156,20 +162,31 @@ func PubSubNewMessage() {
 			continue
 		}
 
+		// Сначала парсим UUID без лока
+		participantUUIDs := make([]uuid.UUID, 0, len(event.Participants))
 		for _, pID := range event.Participants {
-			websocket.ClientsMu.RLock()
-			client, exists := websocket.Clients[uuid.MustParse(pID)]
+			pUUID, err := uuid.Parse(pID)
+			if err != nil {
+				log.Printf("Invalid uuid for participant %s", pID)
+				continue
+			}
+			participantUUIDs = append(participantUUIDs, pUUID)
+		}
+
+		// Один RLock на всю рассылку
+		websocket.ClientsMu.RLock()
+		for _, pUUID := range participantUUIDs {
+			client, exists := websocket.Clients[pUUID]
 			if exists && client.Conn != nil {
 				client.Mu.Lock()
 				err := client.Conn.WriteMessage(ws.TextMessage, []byte(msg.Payload))
 				client.Mu.Unlock()
-				log.Println("Сообщение отправлено пользователю", pID)
 				if err != nil {
-					log.Printf("Failed to send new message to %s: %v", event.UserID, err)
+					log.Printf("Failed to send new message to %s: %v", pUUID, err)
 				}
 			}
-			websocket.ClientsMu.RUnlock()
 		}
+		websocket.ClientsMu.RUnlock()
 	}
 }
 func PubSubReadAck() {
@@ -198,6 +215,8 @@ func PubSubReadAck() {
 			"user_id":     event.UserID,
 			"message_ids": event.MessageIDs,
 		})
+		// Парсим UUID участников без лока
+		recipientUUIDs := make([]uuid.UUID, 0, len(event.Participants))
 		for _, p := range event.Participants {
 			if p == event.UserID {
 				continue
@@ -206,23 +225,31 @@ func PubSubReadAck() {
 			if err != nil {
 				continue
 			}
-			websocket.ClientsMu.RLock()
+			recipientUUIDs = append(recipientUUIDs, clientID)
+		}
+
+		// Один RLock на всю рассылку
+		websocket.ClientsMu.RLock()
+		for _, clientID := range recipientUUIDs {
 			client, exists := websocket.Clients[clientID]
 			if exists && client.Conn != nil {
 				client.Mu.Lock()
-				err = client.Conn.WriteMessage(ws.TextMessage, broadcast)
+				err := client.Conn.WriteMessage(ws.TextMessage, broadcast)
 				client.Mu.Unlock()
 				if err != nil {
-					log.Printf("Failed to send read_update %s: %v", p, err)
+					log.Printf("Failed to send read_update %s: %v", clientID, err)
 				}
 			}
-			websocket.ClientsMu.RUnlock()
 		}
+		websocket.ClientsMu.RUnlock()
 	}
 }
 
 func readPump(c *websocket.Client) {
 	defer func() {
+		// Сигнализируем writePump о завершении
+		close(c.Done)
+
 		// Удаляем клиента из карты
 		websocket.ClientsMu.Lock()
 		delete(websocket.Clients, c.UserID)
@@ -299,6 +326,8 @@ func writePump(c *websocket.Client) {
 
 	for {
 		select {
+		case <-c.Done:
+			return
 		case <-ticker.C:
 			c.Mu.Lock()
 			if err := c.Conn.WriteControl(ws.PingMessage, []byte("ping"), time.Now().Add(10*time.Second)); err != nil {

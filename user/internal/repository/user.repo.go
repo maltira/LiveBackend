@@ -13,7 +13,6 @@ type ProfileRepository interface {
 	Create(user *models.Profile, settings *models.Settings) error
 	Update(userID uuid.UUID, updates map[string]interface{}) error
 
-	GetAll() ([]models.Profile, error)
 	GetAllBySearch(query string, limit int) ([]models.Profile, error)
 	FindByID(userID uuid.UUID) (*models.Profile, error)
 	UsernameExists(username string) error
@@ -49,11 +48,6 @@ func (r *profileRepository) Update(userID uuid.UUID, updates map[string]interfac
 	return r.db.Model(models.Profile{}).Where("id = ?", userID).Updates(updates).Error
 }
 
-func (r *profileRepository) GetAll() ([]models.Profile, error) {
-	var users []models.Profile
-	err := r.db.Preload("Settings").Find(&users).Error
-	return users, err
-}
 func (r *profileRepository) GetAllBySearch(query string, limit int) ([]models.Profile, error) {
 	if len(query) < 4 {
 		return []models.Profile{}, nil

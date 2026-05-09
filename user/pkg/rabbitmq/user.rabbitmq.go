@@ -16,7 +16,8 @@ var (
 
 func InitRabbitMQ() {
 	addr := config.Env.RabbitMQAddr
-	conn, err := amqp.Dial(addr)
+	var err error
+	conn, err = amqp.Dial(addr)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to connect to RabbitMQ: %v", err))
 	}

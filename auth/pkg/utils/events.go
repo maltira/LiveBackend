@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
@@ -16,10 +17,16 @@ func SendRequestCreateProfile(userID uuid.UUID) error {
 
 	body, _ := json.Marshal(payload)
 
-	resp, err := httpClient.Post(
+	req, err := http.NewRequest(http.MethodPost,
 		"http://user:8002/api/user/profile",
-		"application/json",
 		bytes.NewBuffer(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Internal-Secret", os.Getenv("INTERNAL_SECRET"))
+
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}

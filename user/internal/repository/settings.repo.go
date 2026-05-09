@@ -34,12 +34,12 @@ func (r *settingsRepository) UpdateVisibleStatus(userID uuid.UUID, isVisible boo
 	return r.db.
 		Model(&models.Settings{}).
 		Where("profile_id = ?", userID).
-		Update("show_online_status = ?", isVisible).Error
+		Update("show_online_status", isVisible).Error
 }
 
 func (r *settingsRepository) UpdateVisibleBirthDate(userID uuid.UUID, visible string) error {
 	return r.db.
 		Model(&models.Settings{}).
 		Where("profile_id = ?", userID).
-		Update("show_birth_date = ?", visible).Error
+		Update("show_birth_date", visible).Error
 }
