@@ -51,13 +51,12 @@ func AuthMiddleware() gin.HandlerFunc {
 			}
 		}
 
-		refreshToken, err := c.Cookie("refresh_token")
-		if err != nil || refreshToken == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid or expired session"})
+		idStr, ok := claims["id"].(string)
+		if !ok || idStr == "" {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token claims"})
 			return
 		}
-
-		c.Request.Header.Set("X-User-ID", claims["id"].(string))
+		c.Request.Header.Set("X-User-ID", idStr)
 		c.Next()
 	}
 }

@@ -2,9 +2,11 @@ package router
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -19,18 +21,21 @@ func ProxyToBackendGroup(backendURL string, group *gin.RouterGroup) {
 }
 
 func createProxy(backendURL string) gin.HandlerFunc {
-	target, _ := url.Parse(backendURL)
+	target, err := url.Parse(backendURL)
+	if err != nil {
+		log.Fatalf("Invalid backend URL %q: %v", backendURL, err)
+	}
 
 	proxy := httputil.NewSingleHostReverseProxy(target)
+
+	proxy.Transport = &http.Transport{
+		ResponseHeaderTimeout: 30 * time.Second,
+	}
 
 	proxy.Director = func(req *http.Request) {
 		req.URL.Scheme = target.Scheme
 		req.URL.Host = target.Host
 		req.Host = target.Host
-
-		if userID := req.Header.Get("X-User-ID"); userID != "" {
-			req.Header.Set("X-User-ID", userID)
-		}
 	}
 
 	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {

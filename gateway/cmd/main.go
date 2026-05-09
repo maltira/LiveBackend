@@ -22,6 +22,7 @@ func main() {
 	redis.InitGatewayRedis()
 
 	r := gin.Default()
+	r.Use(middleware.StripInternalHeaders())
 	r.Use(middleware.CORSMiddleware())
 
 	// Настройка всех маршрутов
