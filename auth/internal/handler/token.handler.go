@@ -65,9 +65,12 @@ func (h *RefreshHandler) Refresh(c *gin.Context) {
 // @Param        token path string true "Refresh-токен сессии, которую нужно завершить"
 // @Success      200  {object} dto.MessageResponse "Сессия завершена"
 // @Failure      400  {object} dto.ErrorResponse "Переданы некорректные данные"
+// @Failure      403  {object} dto.ErrorResponse "Недостаточно прав"
 // @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
 // @Router       /auth/logout/{token_id} [post]
 func (h *RefreshHandler) TerminateSession(c *gin.Context) {
+	userID, _ := uuid.Parse(c.GetHeader("X-User-ID"))
+
 	id := c.Param("token_id")
 	if id == "" {
 		c.JSON(400, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError + ": token"})
@@ -76,8 +79,12 @@ func (h *RefreshHandler) TerminateSession(c *gin.Context) {
 
 	tokenID := uuid.MustParse(id)
 
-	err := h.tsc.RevokeRefreshTokenById(tokenID)
+	err := h.tsc.RevokeRefreshTokenById(userID, tokenID)
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		if err.Error() == "invalid action" {
+			c.JSON(403, dto.ErrorResponse{Code: 403, Error: "У вас нет прав на выполнение этого действия"})
+			return
+		}
 		c.JSON(500, dto.ErrorResponse{Code: 500, Error: "Ошибка удаления токена: " + err.Error()})
 		return
 	}

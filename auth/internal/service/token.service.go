@@ -18,7 +18,7 @@ type TokenService interface {
 	GenerateTokens(userID uuid.UUID, ip, userAgent, device string) (string, string, error)
 	Refresh(refreshToken string) (string, string, error)
 	RevokeRefreshToken(refreshToken string) error
-	RevokeRefreshTokenById(tokenID uuid.UUID) error
+	RevokeRefreshTokenById(userID, tokenID uuid.UUID) error
 	RevokeAllRefreshTokens(userID uuid.UUID, excludeToken *string) error
 	ListActiveSessions(userID uuid.UUID) ([]models.RefreshToken, error)
 }
@@ -76,9 +76,12 @@ func (s *tokenService) RevokeRefreshToken(refreshToken string) error {
 	}
 	return s.repo.Revoke(refreshToken)
 }
-func (s *tokenService) RevokeRefreshTokenById(tokenID uuid.UUID) error {
+func (s *tokenService) RevokeRefreshTokenById(userID, tokenID uuid.UUID) error {
 	// Получаем запись, чтобы достать jti для blacklist
 	rt, err := s.repo.FindRefreshTokenById(tokenID)
+	if rt.UserID != userID {
+		return errors.New("invalid action")
+	}
 	if err == nil && rt.AccessJTI != "" {
 		_ = BlacklistJTI(rt.AccessJTI)
 	}
