@@ -36,7 +36,7 @@ func NewAuthHandler(asc service.AuthService, osc service.OtpService, tsc service
 // @Tags auth
 // @Accept json
 // @Produce json
-// @Param body body dto.AuthRequest true "Данные для регистрации"
+// @Param body body dto.RegisterRequest true "Данные для регистрации"
 // @Success 	200  {object} dto.MessageResponse "Подтвердите аккаунт по ссылке на почте"
 // @Failure     400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure     409  {object} dto.ErrorResponse "Пользователь с таким email уже существует"
@@ -100,7 +100,7 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 // @Tags         auth
 // @Accept       json
 // @Produce      json
-// @Param        body body dto.AuthRequest true "Данные для входа"
+// @Param        body body dto.LoginRequest true "Данные для входа"
 // @Success      200  {object} dto.OTPSentResponse "Подтвердите вход"
 // @Failure      400  {object} dto.ErrorResponse "Некорректные входные данные"
 // @Failure      401  {object} dto.ErrorResponse "Неверный email или пароль"
@@ -209,7 +209,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 
 	user, err := h.asc.FindByEmail(req.Email)
 	if err != nil || user.DeletedAt != nil {
-		c.JSON(http.StatusOK, true)
+		c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Пройдите по ссылке в письме, чтобы сменить пароль"})
 		return
 	}
 
@@ -248,7 +248,7 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 
 	// ссылку с токеном отправляем по email
 	go func() {
-		resetURL := fmt.Sprintf("%s/reset-password?token=%s", config.Env.FrontendURL, tokenHash)
+		resetURL := fmt.Sprintf("%s/reset-password?token=%s", config.Env.FrontendURL, plainToken)
 
 		err = smtp.SendPasswordReset(req.Email, resetURL, config.Env.PassTokenDuration)
 		if err != nil {
@@ -283,7 +283,8 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 		return
 	}
 
-	err := h.asc.ResetPassword(req.Token, req.Password)
+	tokenHash := utils.HashTokenSHA256(req.Token)
+	err := h.asc.ResetPassword(tokenHash, req.Password)
 	if err != nil {
 		if err.Error() == "invalid or expired token" {
 			c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Ссылка для сброса пароля недействительна или истекла"})

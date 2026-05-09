@@ -60,6 +60,6 @@ func setupProtectedAuthRoutes(auth *gin.RouterGroup) {
 		protected.GET("/sessions", ProxyToBackend("http://auth:"+config.Env.PortAuth))
 		protected.POST("/logout", ProxyToBackend("http://auth:"+config.Env.PortAuth))
 		protected.POST("/logout/all", ProxyToBackend("http://auth:"+config.Env.PortAuth))
-		protected.POST("/logout/:token", ProxyToBackend("http://auth:"+config.Env.PortAuth))
+		protected.POST("/logout/:token_id", ProxyToBackend("http://auth:"+config.Env.PortAuth))
 	}
 }

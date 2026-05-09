@@ -44,7 +44,7 @@ func (h *ProfileHandler) CreateProfile(c *gin.Context) {
 	}
 
 	if err = h.sc.Create(userID); err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return
 	}
 
@@ -97,7 +97,7 @@ func (h *ProfileHandler) GetProfileByID(c *gin.Context) {
 
 	userID, err := uuid.Parse(id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectUUIDError})
 		return
 	}
 
@@ -111,24 +111,6 @@ func (h *ProfileHandler) GetProfileByID(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, user)
-}
-
-// FindAll
-// @Summary      Получить список всех профилей
-// @Description  Возвращает список всех пользователей
-// @Tags         profile
-// @Produce      json
-// @Security	 BearerAuth
-// @Success      200  {array} models.Profile "Список профилей"
-// @Failure      500  {object} dto.ErrorResponse "Внутренняя ошибка сервера"
-// @Router       /user/profile/all [get]
-func (h *ProfileHandler) FindAll(c *gin.Context) {
-	profiles, err := h.sc.GetAll()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
-		return
-	}
-	c.JSON(http.StatusOK, profiles)
 }
 
 // GetProfilesByQuery
@@ -186,7 +168,7 @@ func (h *ProfileHandler) UpdateProfile(c *gin.Context) {
 	}
 	var req map[string]interface{}
 	if err = c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: "Некорректные данные в теле запроса"})
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 400, Error: config.IncorrectDataError})
 		return
 	}
 

@@ -79,10 +79,13 @@ func (s *tokenService) RevokeRefreshToken(refreshToken string) error {
 func (s *tokenService) RevokeRefreshTokenById(userID, tokenID uuid.UUID) error {
 	// Получаем запись, чтобы достать jti для blacklist
 	rt, err := s.repo.FindRefreshTokenById(tokenID)
+	if err != nil {
+		return err
+	}
 	if rt.UserID != userID {
 		return errors.New("invalid action")
 	}
-	if err == nil && rt.AccessJTI != "" {
+	if rt.AccessJTI != "" {
 		_ = BlacklistJTI(rt.AccessJTI)
 	}
 	return s.repo.Revoke(rt.Token)

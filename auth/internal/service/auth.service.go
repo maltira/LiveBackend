@@ -156,7 +156,7 @@ func (s *authService) UpdateUser(user *models.User) error {
 func (s *authService) ResetPassword(token, newPassword string) error {
 	ctx := context.Background()
 
-	// Получаем все ключи reset:password:*
+	// O(1) lookup: ключ = SHA256(token), значение = user_id
 	userIDStr, err := redis.AuthRedis.Get(ctx, "reset:password:"+token).Result()
 	if err != nil {
 		return errors.New("invalid or expired token")

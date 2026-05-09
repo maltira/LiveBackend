@@ -9,10 +9,10 @@ type CreateProfileRequest struct {
 }
 
 type UpdateProfileRequest struct {
-	Username  *string    `json:"username" binding:"min=4,max=16"`
-	FullName  *string    `json:"full_name" binding:"min=1,max=255"`
-	Bio       *string    `json:"bio" binding:"max=500"`
-	AvatarURL *string    `json:"avatar_url" binding:"url"`
+	Username  *string    `json:"username" binding:"omitempty,min=4,max=16"`
+	FullName  *string    `json:"full_name" binding:"omitempty,min=1,max=100"`
+	Bio       *string    `json:"bio" binding:"omitempty,max=500"`
+	AvatarURL *string    `json:"avatar_url" binding:"omitempty,url"`
 	BirthDate *time.Time `json:"birth_date"`
 }
 

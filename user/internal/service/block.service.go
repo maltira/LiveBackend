@@ -4,7 +4,6 @@ import (
 	"errors"
 	"user/internal/models"
 	"user/internal/repository"
-	"user/pkg/database"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -19,11 +18,12 @@ type BlockService interface {
 }
 
 type blockService struct {
-	repo repository.BlockRepository
+	repo     repository.BlockRepository
+	profRepo repository.ProfileRepository
 }
 
-func NewBlockService(repo repository.BlockRepository) BlockService {
-	return &blockService{repo: repo}
+func NewBlockService(repo repository.BlockRepository, profRepo repository.ProfileRepository) BlockService {
+	return &blockService{repo: repo, profRepo: profRepo}
 }
 
 func (sc *blockService) GetAllBlocks(userID uuid.UUID) ([]models.Block, error) {
@@ -45,8 +45,7 @@ func (sc *blockService) BlockUser(userID uuid.UUID, blockedUserID uuid.UUID) (*m
 		return nil, errors.New("нельзя заблокировать свой профиль")
 	}
 
-	var profile *models.Profile
-	err := database.GetDB().First(&profile, "id = ?", blockedUserID).Error
+	profile, err := sc.profRepo.FindByID(blockedUserID)
 	if err != nil {
 		return nil, err
 	}

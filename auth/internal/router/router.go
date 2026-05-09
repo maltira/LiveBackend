@@ -3,6 +3,7 @@ package router
 import (
 	_ "auth/docs"
 	"auth/internal/handler"
+	"auth/internal/middleware"
 	"auth/internal/repository"
 	"auth/internal/service"
 	authdb "auth/pkg/database"
@@ -68,7 +69,7 @@ func InitRouter() *gin.Engine {
 		protected.GET("/sessions", tHandler.ListSessions)
 		protected.POST("/logout", aHandler.LogoutCurrent)
 		protected.POST("/logout/all", aHandler.LogoutAll)
-		protected.POST("/logout/:token", tHandler.TerminateSession)
+		protected.POST("/logout/:token_id", middleware.ValidateUUID("token_id"), tHandler.TerminateSession)
 	}
 
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
