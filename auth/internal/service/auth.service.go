@@ -56,6 +56,12 @@ func (s *authService) Register(email, password string) error {
 	}
 
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("PANIC in background email task: %v", r)
+			}
+		}()
+
 		verifyURL := fmt.Sprintf("%s/verify-email?token=%s", config.Env.FrontendURL, verificationToken)
 		err = smtp.SendVerificationEmail(email, verifyURL)
 		if err != nil {

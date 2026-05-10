@@ -59,7 +59,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		if err.Error() == "email already exists" {
 			c.JSON(http.StatusConflict, dto.ErrorResponse{Code: 409, Error: "Пользователь с такой почтой уже существует"})
 		} else {
-			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка регистрации: " + err.Error()})
+			log.Printf("[ERROR] Register failed: %v", err)
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		}
 		return
 	}
@@ -88,6 +89,8 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 	err := h.asc.VerifyNewAccount(token)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		log.Printf("[ERROR] VerifyEmail failed: %v", err)
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		return
 	}
 
@@ -119,7 +122,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		case err.Error() == "invalid credentials":
 			c.JSON(http.StatusUnauthorized, dto.ErrorResponse{Code: 401, Error: config.IncorrectAuthError})
 		default:
-			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+			log.Printf("[ERROR] Login failed: %v", err)
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		}
 		return
 	}
@@ -151,7 +155,8 @@ func (h *AuthHandler) Login(c *gin.Context) {
 func (h *AuthHandler) LogoutCurrent(c *gin.Context) {
 	refreshToken, _ := c.Cookie("refresh_token")
 	if err := h.tsc.RevokeRefreshToken(refreshToken); err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка отзыва токена: " + err.Error()})
+		log.Printf("[ERROR] Logout failed to revoke token: %v", err)
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		return
 	}
 	utils.ClearAuthCookies(c)
@@ -177,7 +182,8 @@ func (h *AuthHandler) LogoutAll(c *gin.Context) {
 	refreshToken, _ := c.Cookie("refresh_token")
 
 	if err := h.tsc.RevokeAllRefreshTokens(userID, &refreshToken); err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка отзыва токенов: " + err.Error()})
+		log.Printf("[ERROR] LogoutAll failed: %v", err)
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		return
 	}
 
@@ -248,6 +254,12 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 
 	// ссылку с токеном отправляем по email
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[PANIC] in ForgotPassword email task: %v", r)
+			}
+		}()
+
 		resetURL := fmt.Sprintf("%s/reset-password?token=%s", config.Env.FrontendURL, plainToken)
 
 		err = smtp.SendPasswordReset(req.Email, resetURL, config.Env.PassTokenDuration)
@@ -291,6 +303,8 @@ func (h *AuthHandler) ResetPassword(c *gin.Context) {
 			return
 		}
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка сброса пароля: " + err.Error()})
+		log.Printf("[ERROR] ResetPassword failed: %v", err)
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		return
 	}
 
@@ -324,6 +338,8 @@ func (h *AuthHandler) Me(c *gin.Context) {
 			c.JSON(http.StatusNotFound, dto.ErrorResponse{Code: 404, Error: config.NotFoundError + ": Пользователь"})
 		} else {
 			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+			log.Printf("[ERROR] Me failed: %v", err)
+			c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		}
 		return
 	}
@@ -367,6 +383,8 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 	user, err := h.asc.FindByID(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		log.Printf("[ERROR] ChangeEmail find user failed: %v", err)
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		return
 	}
 
@@ -378,6 +396,8 @@ func (h *AuthHandler) ChangePass(c *gin.Context) {
 	err = h.osc.SendOTP(user.ID, user.Email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
+		log.Printf("[ERROR] ChangePass send OTP failed: %v", err)
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		return
 	}
 
@@ -421,6 +441,8 @@ func (h *AuthHandler) ChangeEmail(c *gin.Context) {
 	user, err := h.asc.FindByID(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		log.Printf("[ERROR] ChangePass find user failed: %v", err)
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		return
 	}
 
@@ -435,12 +457,16 @@ func (h *AuthHandler) ChangeEmail(c *gin.Context) {
 		return
 	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: err.Error()})
+		log.Printf("[ERROR] ChangeEmail check existing failed: %v", err)
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		return
 	}
 
 	err = h.osc.SendOTP(user.ID, req.NewEmail)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации OTP: " + err.Error()})
+		log.Printf("[ERROR] ChangeEmail send OTP failed: %v", err)
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		return
 	}
 
