@@ -51,7 +51,7 @@ func (sc *participantService) JoinToChat(chatID, userID uuid.UUID) error {
 			return errors.New("данный чат не существует")
 		}
 		return err
-	} else if *chat.CanJoin {
+	} else if chat.CanJoin != nil && *chat.CanJoin {
 		return sc.repo.JoinToChat(chatID, userID)
 	}
 	return errors.New("доступ к чату ограничен")
@@ -81,7 +81,7 @@ func (sc *participantService) KickParticipant(userID, chatID, kickedID uuid.UUID
 		return errors.New("не удалось получить информацию о пользователе")
 	}
 
-	if user.Role == "owner" || user.Role == "admin" && kicked.Role == "member" {
+	if user.Role == "owner" || (user.Role == "admin" && kicked.Role == "member") {
 		return sc.repo.KickParticipant(chatID, kickedID)
 	}
 	return errors.New("у вас недостаточно прав")
@@ -103,7 +103,7 @@ func (sc *participantService) MuteParticipant(userID, chatID, mutedID uuid.UUID,
 		return errors.New("не удалось получить информацию о пользователе")
 	}
 
-	if user.Role == "owner" || user.Role == "admin" && muted.Role == "member" {
+	if user.Role == "owner" || (user.Role == "admin" && muted.Role == "member") {
 		return sc.repo.MuteParticipant(chatID, mutedID, date)
 	}
 	return errors.New("у вас недостаточно прав")

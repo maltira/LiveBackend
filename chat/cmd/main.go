@@ -32,9 +32,9 @@ func main() {
 		Handler: r,
 	}
 
-	fmt.Println("[Swagger] User swagger was launched at http://localhost:" + port + "/swagger/index.html#/")
+	fmt.Println("[Swagger] Chat swagger was launched at http://localhost:" + port + "/swagger/index.html#/")
 	go func() {
-		log.Printf("User service starting on %s", srv.Addr)
+		log.Printf("Chat service starting on %s", srv.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			panic(err)
 		}

@@ -100,7 +100,8 @@ func (h *OtpHandler) VerifyLoginOTP(c *gin.Context) {
 	device := utils.ParseDeviceInfo(userAgent)
 	access, refresh, err := h.tsc.GenerateTokens(user.ID, ip, userAgent, device)
 	if err != nil {
-		c.JSON(500, dto.ErrorResponse{Code: 500, Error: "Ошибка генерации токенов: " + err.Error()})
+		log.Printf("[ERROR] VerifyLoginOTP tokens generation failed: %v", err)
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		return
 	}
 
@@ -146,7 +147,8 @@ func (h *OtpHandler) VerifyDeleteAccountOTP(c *gin.Context) {
 
 	err = h.asc.SoftDeleteUserByID(user.ID, user.Email, req.Reason, "user")
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка удаления пользователя: " + err.Error()})
+		log.Printf("[ERROR] VerifyDeleteAccountOTP delete failed: %v", err)
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		return
 	}
 
@@ -190,7 +192,8 @@ func (h *OtpHandler) VerifyChangeMailOTP(c *gin.Context) {
 	user.Email = req.NewEmail
 	user.EmailUpdatedAt = time.Now()
 	if err = h.asc.UpdateUser(user); err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка обновления: " + err.Error()})
+		log.Printf("[ERROR] VerifyChangeMailOTP update failed: %v", err)
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		return
 	}
 	c.JSON(http.StatusOK, dto.MessageResponse{Success: true, Message: "Почта успешно изменена"})
@@ -236,7 +239,8 @@ func (h *OtpHandler) VerifyChangePasswordOTP(c *gin.Context) {
 	user.Password = string(hash)
 	user.PasswordUpdatedAt = time.Now()
 	if err = h.asc.UpdateUser(user); err != nil {
-		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Ошибка обновления: " + err.Error()})
+		log.Printf("[ERROR] VerifyChangePasswordOTP update failed: %v", err)
+		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{Code: 500, Error: "Внутренняя ошибка сервера"})
 		return
 	}
 
@@ -287,9 +291,10 @@ func (h *OtpHandler) handleOTPError(c *gin.Context, err error) {
 			Error: config.NotFoundError + ": Пользователь",
 		})
 	default:
+		log.Printf("[ERROR] OTP processing failed: %v", err)
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
 			Code:  500,
-			Error: "Ошибка обработки OTP: " + err.Error(),
+			Error: "Внутренняя ошибка сервера",
 		})
 	}
 }

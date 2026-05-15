@@ -5,8 +5,6 @@ import (
 )
 
 type Config struct {
-	JWTSecret []byte
-
 	DBHost     string
 	DBPort     string
 	DBUser     string
@@ -22,8 +20,6 @@ var Env *Config
 
 func InitEnv() {
 	Env = &Config{
-		JWTSecret: []byte(os.Getenv("JWT_SECRET")),
-
 		DBHost:     os.Getenv("DB_HOST"),
 		DBPort:     os.Getenv("DB_PORT"),
 		DBUser:     os.Getenv("DB_USER"),

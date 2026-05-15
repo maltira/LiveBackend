@@ -5,7 +5,7 @@ import (
 	"chat/pkg/redis"
 	"context"
 	"encoding/json"
-	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -52,6 +52,6 @@ func PublishMessage(chatID uuid.UUID, msg *models.Message, pIDs []string) error 
 		return err
 	}
 
-	fmt.Println("Опубликовано message:", event, "для пользователей", event.Participants)
+	log.Printf("Published message event for chat %s to %d participants", chatID, len(event.Participants))
 	return redis.ChatRedis.Publish(ctx, "chat:message:events", bytes).Err()
 }

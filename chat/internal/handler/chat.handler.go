@@ -71,13 +71,19 @@ func (h *ChatHandler) CreatePrivateChat(c *gin.Context) {
 }
 
 func (h *ChatHandler) CreateGroupChat(c *gin.Context) {
+	userID, err := uuid.Parse(c.GetHeader("X-User-ID"))
+	if err != nil {
+		c.JSON(400, dto.ErrorResponse{Code: 400, Error: "Некорректный UUID активного пользователя"})
+		return
+	}
+
 	var req *dto.ChatCreateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, dto.ErrorResponse{Code: 400, Error: "Некорретные данные в теле запроса"})
 		return
 	}
 
-	chat, err := h.sc.CreateGroupChat(req)
+	chat, err := h.sc.CreateGroupChat(userID, req)
 	if err != nil {
 		c.JSON(500, dto.ErrorResponse{Code: 500, Error: err.Error()})
 		return

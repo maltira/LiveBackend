@@ -32,10 +32,17 @@ func (h *MsgHandler) GetMessages(c *gin.Context) {
 	limit := 50
 	offset := 0
 	if l := c.Query("limit"); l != "" {
-		limit, _ = strconv.Atoi(l)
+		if v, err := strconv.Atoi(l); err == nil && v > 0 {
+			limit = v
+		}
+	}
+	if limit > 100 {
+		limit = 100
 	}
 	if o := c.Query("offset"); o != "" {
-		offset, _ = strconv.Atoi(o)
+		if v, err := strconv.Atoi(o); err == nil && v >= 0 {
+			offset = v
+		}
 	}
 
 	messages, total, err := h.sc.GetMessages(userID, chatID, limit, offset)

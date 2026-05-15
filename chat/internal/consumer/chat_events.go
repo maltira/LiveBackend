@@ -28,25 +28,31 @@ func StartChatEventsConsumer() {
 		}
 
 		if event.Event == "read_update" {
-			userID, _ := uuid.Parse(event.UserID)
-			chatID, _ := uuid.Parse(event.ChatID)
-
-			var messages []models.Message
-			db.Where("chat_id = ? AND ((NOT (? = ANY(read_by))) OR read_by IS NULL)", chatID, userID).
-				Find(&messages)
-
-			var participants []models.Participant
-			var pIds []string
-			db.Where("chat_id = ?", chatID).Find(&participants)
-			for _, participant := range participants {
-				pIds = append(pIds, participant.UserID.String())
+			userID, err := uuid.Parse(event.UserID)
+			if err != nil {
+				log.Printf("Invalid userID in read_update: %v", err)
+				return
+			}
+			chatID, err := uuid.Parse(event.ChatID)
+			if err != nil {
+				log.Printf("Invalid chatID in read_update: %v", err)
+				return
 			}
 
-			for _, m := range messages {
-				m.ReadBy = append(m.ReadBy, userID.String())
-				if userID != *m.UserID {
-					db.Model(&m).Update("read_by", gorm.Expr("array_append(read_by, ?)", userID))
-				}
+			// Batch UPDATE — обновляем только указанные сообщения, которые ещё не прочитаны этим пользователем
+			if len(event.MessageIDs) > 0 {
+				db.Model(&models.Message{}).
+					Where("id IN ? AND chat_id = ? AND (user_id IS NULL OR user_id != ?) AND ((NOT (? = ANY(read_by))) OR read_by IS NULL)",
+						event.MessageIDs, chatID, userID, userID).
+					Update("read_by", gorm.Expr("array_append(read_by, ?)", userID))
+			}
+
+			// Получаем участников для рассылки ack
+			var participants []models.Participant
+			db.Where("chat_id = ?", chatID).Find(&participants)
+			var pIds []string
+			for _, p := range participants {
+				pIds = append(pIds, p.UserID.String())
 			}
 
 			ack := map[string]interface{}{
@@ -58,8 +64,7 @@ func StartChatEventsConsumer() {
 			}
 			payload, _ := json.Marshal(ack)
 
-			err := redis.ChatRedis.Publish(context.Background(), "chat:read_ack:events", payload).Err()
-			if err != nil {
+			if err := redis.ChatRedis.Publish(context.Background(), "chat:read_ack:events", payload).Err(); err != nil {
 				log.Printf("Failed to publish read_ack event: %v", err)
 			}
 		}
